@@ -6,7 +6,6 @@ import type {RollResult} from './CreatorRollBridge';
 export async function decodeParts(result:RollResult):Promise<Parts>{
  const parts:Parts={};
  await Promise.all(Object.entries(result.layers).map(async([key,url])=>{const img=new Image();img.src=url;await img.decode();parts[key]=img;}));
- if(parts.outer&&parts.outfit){const c=document.createElement('canvas');c.width=c.height=472;const ctx=c.getContext('2d')!;ctx.drawImage(parts.outfit,0,0);ctx.drawImage(parts.outer,0,0);const img=new Image();img.src=c.toDataURL();await img.decode();parts.outfit=img;}
  return parts;
 }
 export async function createVisitor(parts:Parts,hair?:HairSettings){

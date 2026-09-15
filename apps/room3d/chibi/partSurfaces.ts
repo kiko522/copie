@@ -37,7 +37,7 @@ export function thickPart(image:HTMLImageElement, depth:number, surface:(x:numbe
 }
 
 /** Continue each row's opaque garment edge around the back; never average the whole garment. */
-export function clothingCanvas(image:HTMLImageElement, skin:string, rear:boolean) {
+export function clothingCanvas(image:HTMLImageElement|HTMLCanvasElement, skin:string, rear:boolean) {
     const canvas=document.createElement('canvas');canvas.width=canvas.height=472;
     const ctx=canvas.getContext('2d')!;ctx.drawImage(image,0,0,472,472);
     const data=ctx.getImageData(0,0,472,472).data;
@@ -53,5 +53,20 @@ export function clothingCanvas(image:HTMLImageElement, skin:string, rear:boolean
         ctx.fillStyle=sample(r);ctx.fillRect(rear?mid:right,y,472-(rear?mid:right),1);
     }
     if(!rear)ctx.drawImage(image,0,0,472,472);
+    return canvas;
+}
+
+const garmentTops=new WeakMap<HTMLImageElement,number>();
+/** Lengthen each original garment from its own upper edge before layering. */
+export function composeGarments(parts:Record<string,HTMLImageElement>,lengths:Record<string,number>){
+    const canvas=document.createElement('canvas');canvas.width=canvas.height=472;
+    const ctx=canvas.getContext('2d')!;
+    for(const key of ['outfit','outer']){
+        const image=parts[key];if(!image)continue;
+        const length=Math.max(0,Math.min(2,lengths[key]??1));if(!length)continue;
+        let top=garmentTops.get(image);
+        if(top===undefined){const probe=document.createElement('canvas');probe.width=probe.height=472;const p=probe.getContext('2d')!;p.drawImage(image,0,0,472,472);const rgba=p.getImageData(0,0,472,472).data;top=0;for(let i=3;i<rgba.length;i+=4)if(rgba[i]>32){top=Math.floor((i-3)/4/472);break;}garmentTops.set(image,top);}
+        ctx.drawImage(image,0,top*(1-length),472,472*length);
+    }
     return canvas;
 }

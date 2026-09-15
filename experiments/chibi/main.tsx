@@ -47,8 +47,6 @@ function App() {
         try{
             const loaded:Parts={};
             await Promise.all(Object.entries(result.layers).map(async([key,url])=>{const img=new Image();img.src=url;await img.decode();loaded[key]=img;}));
-            // Outer clothing is another original creator layer; keep it on the garment.
-            if(loaded.outer){const c=document.createElement('canvas');c.width=c.height=472;const ctx=c.getContext('2d')!;ctx.drawImage(loaded.outfit,0,0);ctx.drawImage(loaded.outer,0,0);const img=new Image();img.src=c.toDataURL();await img.decode();loaded.outfit=img;}
             setParts(loaded);setImage(result.image);setAssets(selectedHairAssets(result.state));
             if(captureTarget.current==='3d')setEditMode('3d');else setEditing(false);
             if(result.state)try{localStorage.setItem('chibi-world-experiment-appearance',JSON.stringify(result.state));}catch{}

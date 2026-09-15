@@ -2,7 +2,7 @@ import * as T from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import type { Parts, Motion } from './types';
 import {defaultHairLayer,hairMode,type HairSettings} from './types';
-import { clothingCanvas } from './partSurfaces';
+import { clothingCanvas,composeGarments } from './partSurfaces';
 import referenceUrl from './reference.fbx?url';
 import {silhouetteDepth} from './puff';
 
@@ -23,6 +23,7 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
         return n ? `rgb(${Math.round(r/n)},${Math.round(g/n)},${Math.round(b/n)})` : '#b6a9aa';
     };
     const skin=average(parts.skin);
+    const garment=composeGarments(parts,{outfit:hair?.layers.outfit?.length??1,outer:hair?.layers.outer?.length??1});
     const frontScalp=keep(new T.MeshStandardMaterial({color:average(parts.fronthair),roughness:1}));
     const rearScalp=keep(new T.MeshStandardMaterial({color:average(parts.back1||parts.back2||parts.fronthair),roughness:1}));
     // Match the actual face/body material boundary (model y=.60) in the original
@@ -42,7 +43,7 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
         const ctx=canvas.getContext('2d')!;
         if(fill){ctx.fillStyle=fill;ctx.fillRect(0,0,472,472);}
         keys.forEach(k=>{
-            const drawable=k==='faceDecor'?faceDecor:parts[k];
+            const drawable=k==='faceDecor'?faceDecor:k==='outfit'?garment:parts[k];
             if(!drawable)return;
             ctx.save();
             // Lift the facial cluster by 8 creator pixels and gently compact it.
@@ -63,7 +64,7 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
         const texture=keep(new T.CanvasTexture(canvas));texture.colorSpace=T.SRGBColorSpace;return texture;
     };
     const garmentMap=(rear:boolean)=>{
-        const canvas=clothingCanvas(parts.outfit,skin,rear);
+        const canvas=clothingCanvas(garment,skin,rear);
         // Body decorations overlay the front garment; do not smear their colors
         // across the back when extending the garment's original edge colors.
         if(!rear)canvas.getContext('2d')!.drawImage(bodyDecor,0,0);
