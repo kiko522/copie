@@ -15,6 +15,7 @@ import { safeResponseJson, extractJson } from '../utils/safeApi';
 import { Door, Sparkle, Image, GearSix, Camera, MoonStars, ArrowUUpLeft, ArrowUUpRight, CopySimple, Images, Eye, EyeSlash } from '@phosphor-icons/react';
 import { FURNITURE_ICONS } from '../utils/furnitureIcons';
 import PixelHomeView from './pixelHome/PixelHomeView';
+const Home3DView = React.lazy(() => import('./room3d/Home3DView'));
 import WorldHomeApp from './WorldHomeApp';
 import DreamTheater from './DreamTheater';
 import { useDreamSim, dreamSimStore } from '../utils/dreamSimStore';
@@ -320,7 +321,7 @@ const RoomApp: React.FC = () => {
     const launchedFromDesktopRef = useRef(!!launchIntent);
 
     // Core State
-    const [viewState, setViewState] = useState<'select' | 'room' | 'pixelHome'>(() => {
+    const [viewState, setViewState] = useState<'select' | 'room' | 'pixelHome' | 'home3D'>(() => {
         if (launchIntent?.tab === 'pixelHome' && launchIntent.charId) return 'pixelHome';
         if (launchIntent?.charId) return 'room'; // 房间 / 梦境
         return 'select';
@@ -1666,6 +1667,11 @@ ${!shouldGenerateTodo ? `(系统: 今日待办已存在，无需生成，请忽�
     // --- Renderers ---
 
     // PIXEL HOME SCREEN
+    if (viewState === 'home3D' && char) {
+        return <React.Suspense fallback={<div className="h-full grid place-items-center bg-[#e8dde7] text-sm text-purple-700">正在打开小屋…</div>}>
+            <Home3DView key={char.id} value={char.home3D} onChange={value => updateCharacter(char.id, { home3D: value })} onBack={() => setViewState('room')} />
+        </React.Suspense>;
+    }
     if (viewState === 'pixelHome' && char) {
         return (
             <PixelHomeView
@@ -2087,6 +2093,7 @@ ${!shouldGenerateTodo ? `(系统: 今日待办已存在，无需生成，请忽�
             <div className="absolute top-0 w-full px-4 pb-2 flex justify-between z-30 pointer-events-none" style={{ paddingTop: 'max(3rem, var(--safe-top, 0px))' }}>
                 <button onClick={() => { if (launchedFromDesktopRef.current) closeApp(); else setViewState('select'); }} className="bg-white/90 p-2 rounded-full shadow-md pointer-events-auto active:scale-90 transition-transform text-slate-600"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg></button>
                 <div className="flex gap-2 pointer-events-auto">
+                    {mode === 'view' && <button onClick={() => setViewState('home3D')} className="px-3 py-2 bg-[#eee4f4] rounded-full shadow-md text-[#715588] text-xs font-bold" title="进入可扩建的 3D 小屋">3D 小屋</button>}
                     {/* 装修模式：撤销 / 重做 */}
                     {mode === 'edit' && (
                         <>

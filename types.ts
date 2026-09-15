@@ -2955,6 +2955,8 @@ export interface CharacterProfile {
       bio?: string;
   };
 
+  /** 模块化 3D 小屋，独立于原有 2D 房间；随完整备份保存。 */
+  home3D?: import('./apps/room3d/types').Home3DState;
   roomConfig?: {
       bgImage?: string;
       wallImage?: string;
