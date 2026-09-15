@@ -1,12 +1,13 @@
 import * as T from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import type { Parts, Motion } from './types';
+import {defaultHairLayer,type HairSettings} from './types';
 import { clothingCanvas } from './partSurfaces';
 import referenceUrl from './reference.fbx?url';
 
 export async function loadBody() { return new FBXLoader().loadAsync(referenceUrl); }
 
-export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'hair' | 'outfit') {
+export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'hair' | 'outfit', hair?:HairSettings) {
     const headDepth=.82;
     const resources: Array<{ dispose(): void }> = [];
     const keep = <V extends { dispose(): void }>(v: V): V => { resources.push(v); return v; };
@@ -150,30 +151,35 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
     if(appearance!=='skin'){
         // Front and rear are two halves of one shared, zero-thickness surface.
         // Both use identical seam positions at +/- PI/2; only their texture differs.
-        const ringHalf=(keys:string[],rear:boolean)=>{
+        const ringHalf=(keys:string[],rear:boolean,settings=defaultHairLayer,full=false)=>{
             const geometry=keep(new T.PlaneGeometry(1,1,64,80));
             const p=geometry.getAttribute('position'),uv=geometry.getAttribute('uv');
             for(let i=0;i<p.count;i++){
                 const u=uv.getX(i),v=uv.getY(i);
                 const sourceY=(1-v)*472;
-                const theta=(u-.5)*Math.PI;
+                const theta=(u-.5)*(full?Math.PI*2:Math.PI);
                 // Same 472px registration as skin/clothes: never fit the opaque
                 // hair bounds to the full sheet, which would lengthen short styles.
                 const y=Math.min(2.20,(424-sourceY)/336*2);
                 const crown=Math.sqrt(Math.max(0,1-Math.max(0,(y-1.25)/.95)**2));
                 const x=.99*crown*Math.sin(theta);
                 const z=(rear?-1:1)*.86*headDepth*crown*Math.cos(theta);
-                p.setXYZ(i,x,y,z);
+                p.setXYZ(i,x*settings.width*(1+settings.distance),2.2+(y-2.2)*settings.length+settings.offsetY,z*(1+settings.distance));
                 // Project original coordinates onto the shared ring so the central
                 // bangs keep their 2D width instead of stretching with arc length.
-                uv.setXY(i,(237+x/1.875*325)/472,v);
+                uv.setXY(i,full?u:(237+x/1.875*325)/472,v);
             }
             geometry.computeVertexNormals();
             const material=keep(new T.MeshStandardMaterial({map:makeTexture(keys),alphaTest:.2,side:T.DoubleSide,roughness:1}));
             const sheet=new T.Mesh(geometry,material);sheet.name=rear?'rear-hair-sheet':'front-hair-sheet';sheet.position.y=-.64;hairPivot.add(sheet);
         };
-        ringHalf(['earhair','fronthair'],false);
-        ringHalf(['back2','back1'],true);
+        for(const [key,rear,index] of [['back2',true,0],['back1',true,1],['earhair',false,0],['fronthair',false,1]] as const){
+            const settings=hair?.layers[key]??defaultHairLayer;
+            ringHalf([key],rear,{...settings,distance:settings.distance+index*.002});
+        }
+        for(const layer of hair?.extras??[]){
+            if(parts[layer.source])ringHalf([layer.source],false,layer,true);
+        }
         // Continue the adjacent painted colors, not the average of the entire
         // hairstyle. Vertex colors carry only a soft color field, never stretched
         // strands or highlights from the original texture.
@@ -188,9 +194,15 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
             }
             return (x:number,y:number)=>{
                 const px=(237+x/1.875*325)/4,py=(424-y/2*336)/4;
-                let nearest=Infinity,chosen:T.Color|undefined;
-                for(const point of opaque){const d=(point.x-px)**2+(point.y-py)**2;if(d<nearest){nearest=d;chosen=point.color;}}
-                return chosen?.clone()??new T.Color(average(parts.fronthair));
+                let nearest=Infinity,anchor:typeof opaque[number]|undefined;
+                for(const point of opaque){const d=(point.x-px)**2+(point.y-py)**2;if(d<nearest){nearest=d;anchor=point;}}
+                if(!anchor)return new T.Color(average(parts.fronthair));
+                // A nearest opaque pixel can be the dark painted outline. Take
+                // a small opaque neighborhood instead of extending that line
+                // across the entire side of the head.
+                const color=new T.Color(0,0,0);let weight=0;
+                for(const point of opaque){const d=(point.x-anchor.x)**2+(point.y-anchor.y)**2;if(d>16)continue;const w=1/(1+d);color.r+=point.color.r*w;color.g+=point.color.g*w;color.b+=point.color.b*w;weight+=w;}
+                return weight?color.multiplyScalar(1/weight):anchor.color.clone();
             };
         };
         const frontColor=colorField(['earhair','fronthair']),rearColor=colorField(['back2','back1']);
@@ -199,8 +211,15 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
             const p=geometry.getAttribute('position'),colors:number[]=[],normals:number[]=[];
             for(let i=0;i<p.count;i++){
                 const x=p.getX(i),y=p.getY(i),z=p.getZ(i);
-                const blend=T.MathUtils.smoothstep(z,-.24,.24);
-                const color=rearColor(x,y).lerp(frontColor(x,y),blend);colors.push(color.r,color.g,color.b);
+                const radius=Math.sqrt(Math.max(0,1-Math.max(0,(y-1.25)/.95)**2));
+                // Sample the actual front/back boundaries of the side patch.
+                // Sampling its outermost x in the middle picks a different dark
+                // strand (or outline), producing a stripe on asymmetric styles.
+                const sidePatch=name.startsWith('plain-hair-gap');
+                const sampleX=sidePatch?Math.sign(x)*.984*radius*Math.cos(.56):x;
+                const angle=Math.atan2(z/(.854*headDepth),Math.abs(x)/.984);
+                const blend=sidePatch?T.MathUtils.smoothstep(angle,-.56,.56):T.MathUtils.smoothstep(z,-.24,.24);
+                const color=rearColor(sampleX,y).lerp(frontColor(sampleX,y),blend);colors.push(color.r,color.g,color.b);
                 const normal=new T.Vector3(x/(.984*.984),Math.max(0,y-1.25)/(.95*.95),z/(.854*headDepth)**2).normalize();
                 normals.push(normal.x,normal.y,normal.z);
             }

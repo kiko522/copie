@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Puppet, type Motion } from './Puppet';
 import type { Parts } from './Puppet';
@@ -6,6 +6,8 @@ import './style.css';
 import { CreatorRollBridge, type RollResult } from './CreatorRollBridge';
 import Home3DView from '../../apps/room3d/Home3DView';
 import type {Home3DState} from '../../apps/room3d/types';
+import {HairEditor} from './HairEditor';
+import type {HairSettings} from '../../apps/room3d/chibi/types';
 
 function App() {
     const [parts, setParts] = useState<Parts>();
@@ -20,6 +22,18 @@ function App() {
     const [bare, setBare] = useState(false);
     const [world,setWorld]=useState(true);
     const [home,setHome]=useState<Home3DState>();
+    const [editing,setEditing]=useState(false),[captureOnly,setCaptureOnly]=useState(false);
+    const [editMode,setEditMode]=useState<'2d'|'3d'>('2d');
+    const captureTarget=useRef<'world'|'3d'>('world');
+    const [hair,setHair]=useState<HairSettings>(()=>{try{const saved=JSON.parse(localStorage.getItem('chibi-world-hair-settings')||'null');if(saved?.layers&&Array.isArray(saved.extras))return saved;}catch{}return {layers:{},extras:[]};});
+    const [appliedHair,setAppliedHair]=useState(hair);
+    useEffect(()=>{const timer=setTimeout(()=>setAppliedHair(hair),120);return()=>clearTimeout(timer);},[hair]);
+    const [renderParts,setRenderParts]=useState<Parts>();
+    useEffect(()=>{let cancelled=false;if(!parts)return;Promise.all(hair.extras.filter(e=>e.src).map(async e=>{const img=new Image();img.src=e.src!;await img.decode();return [e.source,img] as const;})).then(images=>{if(!cancelled)setRenderParts({...parts,...Object.fromEntries(images)});}).catch(e=>setError(String(e)));return()=>{cancelled=true};},[parts,hair.extras]);
+    const saveHair=()=>{try{localStorage.setItem('chibi-world-hair-settings',JSON.stringify(hair));}catch{setError('3D 调整在本次预览中生效，但本机存储空间不足，未能保存。');}};
+    const show3d=()=>{captureTarget.current='3d';setRolling(true);setCaptureOnly(true);setRollRequest(v=>v+1);};
+    const [initialAppearance]=useState<unknown>(()=>{try{return JSON.parse(localStorage.getItem('chibi-world-experiment-appearance')||'null');}catch{return undefined;}});
+    const confirmAppearance=()=>{saveHair();captureTarget.current='world';setError('');setRolling(true);setCaptureOnly(true);setRollRequest(v=>v+1);};
 
     const requestRoll=()=>{setError('');setRolling(true);setRollRequest(v=>v+1);};
     const acceptRoll=async(result:RollResult)=>{
@@ -29,20 +43,24 @@ function App() {
             // Outer clothing is another original creator layer; keep it on the garment.
             if(loaded.outer){const c=document.createElement('canvas');c.width=c.height=472;const ctx=c.getContext('2d')!;ctx.drawImage(loaded.outfit,0,0);ctx.drawImage(loaded.outer,0,0);const img=new Image();img.src=c.toDataURL();await img.decode();loaded.outfit=img;}
             setParts(loaded);setImage(result.image);
+            if(captureTarget.current==='3d')setEditMode('3d');else setEditing(false);
+            if(result.state)try{localStorage.setItem('chibi-world-experiment-appearance',JSON.stringify(result.state));}catch{}
         }catch(e){setError(String(e));}finally{setRolling(false);}
     };
     useEffect(()=>{
         if(!rolling)return;
-        const timer=window.setTimeout(()=>{setRolling(false);setError('这次 Roll 等待太久，可以再试一次。');},20000);
+        const timer=window.setTimeout(()=>{setRolling(false);setError('形象读取超时，可以再确认一次。');},20000);
         return()=>window.clearTimeout(timer);
-    },[rolling,rollRequest]);    return <main style={world?{height:'100svh',minHeight:0,padding:0,overflow:'hidden'}:undefined}><CreatorRollBridge request={rollRequest} onReady={()=>{setRollReady(true);requestRoll();}} onResult={acceptRoll} onError={message=>{setError(message);setRolling(false);}}/>
-        {world?<><section style={{position:'fixed',inset:0,zIndex:10}}>{parts?<Home3DView parts={parts} value={home} onChange={setHome} onBack={()=>setWorld(false)}/>:<p>{error||'小人正在搬家…'}</p>}<button disabled={!rollReady||rolling} onClick={requestRoll} style={{position:'absolute',left:18,top:150,zIndex:2,background:'#fff6ee',borderRadius:20}}>{rolling?'Roll 中…':'🎲 换一只来玩'}</button>{error&&<p role="alert" style={{position:'absolute',left:18,top:195}}>{error}</p>}</section></>:<>
+    },[rolling,rollRequest]);    return <main style={world?{height:'100svh',minHeight:0,padding:0,overflow:'hidden'}:undefined}><CreatorRollBridge editing={editing&&editMode==='2d'} captureOnly={captureOnly} savedState={initialAppearance} request={rollRequest} onReady={()=>{setRollReady(true);requestRoll();}} onResult={acceptRoll} onError={message=>{setError(message);setRolling(false);}}/>
+        {editing&&<div style={{position:'fixed',top:0,left:0,right:0,height:60,zIndex:31,background:'#fff8f0',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 16px'}}><button onClick={()=>setEditing(false)}>返回</button><button onClick={()=>setEditMode('2d')} aria-pressed={editMode==='2d'}>选素材</button><button disabled={rolling} onClick={show3d} aria-pressed={editMode==='3d'}>3D 调整</button><button disabled={rolling} onClick={confirmAppearance}>{rolling?'读取中…':'捏好了，去小屋'}</button></div>}
+        {editing&&editMode==='3d'&&renderParts&&<HairEditor parts={renderParts} hair={hair} previewHair={appliedHair} onChange={setHair}/>}
+        {world?<><section style={{position:'fixed',inset:0,zIndex:10}}>{parts?<Home3DView hair={appliedHair} parts={renderParts||parts} value={home} onChange={setHome} onBack={()=>setWorld(false)}/>:<p>{error||'小人正在搬家…'}</p>}<button disabled={!rollReady||rolling} onClick={()=>setEditing(true)} style={{position:'absolute',left:18,top:150,zIndex:2,background:'#fff6ee',borderRadius:20}}>{rolling?'读取中…':'✎ 捏小人'}</button>{error&&<p role="alert" style={{position:'absolute',left:18,top:195}}>{error}</p>}</section></>:<>
         <header><div className="eyebrow">KANATA / HAIR SHEETS</div><h1>再试一次，发片小人。</h1><p>前后一圈薄发片，包住圆墩墩的素体。</p><button onClick={()=>setWorld(true)}>带去 Little World →</button></header>
-        <section className="stage">{parts ? <><div className="model-layer" style={{ visibility: flat ? 'hidden' : 'visible' }}><Puppet parts={parts} yaw={yaw} motion={motion} wire={wire} playing={playing && !flat} appearance={bare ? 'skin' : 'outfit'} /></div>{flat && <img className="original" src={image} alt="原始分层 chibi 合成图" />}</> : <p>{error || '正在读取分层素材…'}</p>}</section>
+        <section className="stage">{parts ? <><div className="model-layer" style={{ visibility: flat ? 'hidden' : 'visible' }}><Puppet hair={appliedHair} parts={renderParts||parts} yaw={yaw} motion={motion} wire={wire} playing={playing && !flat} appearance={bare ? 'skin' : 'outfit'} /></div>{flat && <img className="original" src={image} alt="原始分层 chibi 合成图" />}</> : <p>{error || '正在读取分层素材…'}</p>}</section>
         <footer>
             <div className="actions">{([['idle','站立'],['wave-cute','可爱挥手'],['wave-calm','冷静挥手'],['sleep','睡觉'],['angry','生气'],['walk','走路'],['dance','晃一晃']] as const).map(([key,label])=><button key={key} aria-pressed={motion===key} onClick={()=>{setMotion(key);setPlaying(true);setFlat(false);}}>{label}</button>)}<button onClick={()=>setPlaying(!playing)}>{playing?'暂停':'继续'}</button></div>
             <div className="controls"><label>转角 <input aria-label="转角" type="range" min="-180" max="180" value={yaw} onChange={e => setYaw(+e.target.value)} /><output>{yaw}°</output></label></div>
-            <nav><button aria-pressed={bare} onClick={()=>setBare(!bare)}>{bare ? '穿回发片' : '看光头素体'}</button><button aria-pressed={flat} onClick={() => setFlat(!flat)}>{flat ? '返回立体' : '对照原图'}</button><button aria-pressed={wire} onClick={() => setWire(!wire)}>{wire ? '隐藏网格' : '显示网格'}</button><button disabled={!rollReady||rolling} onClick={requestRoll}>{rolling ? 'Roll 中…' : '🎲 Roll 一只'}</button><button onClick={() => { setYaw(0); }}>正面</button></nav>
+            <nav><button aria-pressed={bare} onClick={()=>setBare(!bare)}>{bare ? '穿回发片' : '看光头素体'}</button><button aria-pressed={flat} onClick={() => setFlat(!flat)}>{flat ? '返回立体' : '对照原图'}</button><button aria-pressed={wire} onClick={() => setWire(!wire)}>{wire ? '隐藏网格' : '显示网格'}</button><button disabled={!rollReady||rolling} onClick={()=>setEditing(true)}>{rolling ? '读取中…' : '✎ 捏小人'}</button><button onClick={() => { setYaw(0); }}>正面</button></nav>
             <p className="note">前发与后发使用同一圈曲面的前后两半，侧边对齐。发片没有厚度；保留原图透明轮廓。</p>
             {error && <p role="alert">{error}</p>}
         </footer></>}

@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as T from 'three';
 import { buildBody, loadBody } from './FbxBody';
+import type {HairSettings} from '../../apps/room3d/chibi/types';
 
 export type Parts = Record<string, HTMLImageElement>;
 export type Motion = 'idle' | 'wave' | 'wave-cute' | 'wave-calm' | 'sleep' | 'angry' | 'walk' | 'dance';
 
-export function Puppet({ parts, yaw, motion, wire, playing, appearance = 'outfit' }: { parts: Parts; yaw: number; motion: Motion; wire: boolean; playing: boolean; appearance?: 'skin' | 'hair' | 'outfit' }) {
+export function Puppet({ parts, yaw, motion, wire, playing, appearance = 'outfit', hair }: { hair?:HairSettings; parts: Parts; yaw: number; motion: Motion; wire: boolean; playing: boolean; appearance?: 'skin' | 'hair' | 'outfit' }) {
     const [source, setSource] = useState<T.Group>();
     const [loadError, setLoadError] = useState('');
     useEffect(() => { let cancelled=false; let loaded:T.Group|undefined; const release=()=>loaded?.traverse(o=>{if(o instanceof T.Mesh){o.geometry.dispose();(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose());}}); loadBody().then(m=>{loaded=m;if(cancelled)release();else setSource(m);}).catch(e=>{if(!cancelled)setLoadError(String(e));});return()=>{cancelled=true;release();}; }, []);
@@ -20,7 +21,7 @@ export function Puppet({ parts, yaw, motion, wire, playing, appearance = 'outfit
         const extra: Array<{ dispose(): void }> = [];
         setError('');
         try {
-            rig = buildBody(source, parts, appearance);
+            rig = buildBody(source, parts, appearance, hair);
             renderer = new T.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = T.PCFSoftShadowMap;
@@ -64,6 +65,6 @@ export function Puppet({ parts, yaw, motion, wire, playing, appearance = 'outfit
             frame = requestAnimationFrame(render);
         } catch (e) { setError(`无法显示 3D：${String(e)}`); }
         return () => { cancelAnimationFrame(frame); observer?.disconnect(); rig?.resources.forEach(r => r.dispose()); extra.forEach(r => r.dispose()); renderer?.domElement.remove(); renderer?.dispose(); };
-    }, [source, parts, appearance]);
+    }, [source, parts, appearance, hair]);
     return <div ref={host} className="puppet">{(error || loadError) && <p role="alert">{error || loadError}</p>}{!source && !loadError && <p>正在加载你的 FBX 素体…</p>}</div>;
 }
