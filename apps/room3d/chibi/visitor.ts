@@ -16,7 +16,7 @@ export async function createVisitor(parts:Parts){
  finally{source.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();for(const m of Array.isArray(o.material)?o.material:[o.material])m.dispose();}});}
  const root=new THREE.Group();root.name='little-world-chibi';root.add(body.root);body.root.scale.setScalar(.7);
  // Keep the painted features legible under the room's brighter directional light.
- body.root.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=false;o.receiveShadow=false;for(const m of Array.isArray(o.material)?o.material:[o.material])if(m instanceof THREE.MeshStandardMaterial){m.emissive.copy(m.color);m.emissiveIntensity=.12;}}});
+ body.root.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=false;o.receiveShadow=false;for(const m of Array.isArray(o.material)?o.material:[o.material])if(m instanceof THREE.MeshStandardMaterial){m.emissive.set('#ffffff');m.emissiveIntensity=.04;}}});
  let disposed=false;
  return {root,animate(time:number,motion:Motion){body.animate(time,motion);},dispose(){if(disposed)return;disposed=true;root.removeFromParent();for(const resource of body.resources)resource.dispose();}};
 }

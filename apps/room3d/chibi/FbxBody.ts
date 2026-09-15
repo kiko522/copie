@@ -159,8 +159,8 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
                 const theta=(u-.5)*Math.PI;
                 // Same 472px registration as skin/clothes: never fit the opaque
                 // hair bounds to the full sheet, which would lengthen short styles.
-                const y=(424-sourceY)/336*2;
-                const crown=Math.sqrt(Math.max(.0025,1-Math.max(0,(y-1.25)/.95)**2));
+                const y=Math.min(2.20,(424-sourceY)/336*2);
+                const crown=Math.sqrt(Math.max(0,1-Math.max(0,(y-1.25)/.95)**2));
                 const x=.99*crown*Math.sin(theta);
                 const z=(rear?-1:1)*.86*headDepth*crown*Math.cos(theta);
                 p.setXYZ(i,x,y,z);
@@ -174,17 +174,47 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
         };
         ringHalf(['earhair','fronthair'],false);
         ringHalf(['back2','back1'],true);
-        // Plain-color underlay for the side gap. No source texture is stretched
-        // or resampled onto this piece; the two original sheets stay untouched.
-        const joinColor=new T.Color(average(parts.fronthair)).lerp(new T.Color(average(parts.back1||parts.back2||parts.fronthair)),.5);
-        const joinMaterial=keep(new T.MeshStandardMaterial({color:joinColor,side:T.DoubleSide,roughness:1}));
+        // Continue the adjacent painted colors, not the average of the entire
+        // hairstyle. Vertex colors carry only a soft color field, never stretched
+        // strands or highlights from the original texture.
+        const colorField=(keys:string[])=>{
+            const c=document.createElement('canvas');c.width=c.height=118;
+            const ctx=c.getContext('2d')!;for(const key of keys)if(parts[key])ctx.drawImage(parts[key],0,0,118,118);
+            const pixels=ctx.getImageData(0,0,118,118).data;
+            const opaque:Array<{x:number;y:number;color:T.Color}>=[];
+            for(let y=0;y<118;y++)for(let x=0;x<118;x++){
+                const i=(y*118+x)*4;if(pixels[i+3]<200)continue;
+                opaque.push({x,y,color:new T.Color().setRGB(pixels[i]/255,pixels[i+1]/255,pixels[i+2]/255,T.SRGBColorSpace)});
+            }
+            return (x:number,y:number)=>{
+                const px=(237+x/1.875*325)/4,py=(424-y/2*336)/4;
+                let nearest=Infinity,chosen:T.Color|undefined;
+                for(const point of opaque){const d=(point.x-px)**2+(point.y-py)**2;if(d<nearest){nearest=d;chosen=point.color;}}
+                return chosen?.clone()??new T.Color(average(parts.fronthair));
+            };
+        };
+        const frontColor=colorField(['earhair','fronthair']),rearColor=colorField(['back2','back1']);
+        const joinMaterial=keep(new T.MeshStandardMaterial({vertexColors:true,side:T.DoubleSide,roughness:1}));
+        const finishUnderlay=(geometry:T.BufferGeometry,name:string)=>{
+            const p=geometry.getAttribute('position'),colors:number[]=[],normals:number[]=[];
+            for(let i=0;i<p.count;i++){
+                const x=p.getX(i),y=p.getY(i),z=p.getZ(i);
+                const blend=T.MathUtils.smoothstep(z,-.24,.24);
+                const color=rearColor(x,y).lerp(frontColor(x,y),blend);colors.push(color.r,color.g,color.b);
+                const normal=new T.Vector3(x/(.984*.984),Math.max(0,y-1.25)/(.95*.95),z/(.854*headDepth)**2).normalize();
+                normals.push(normal.x,normal.y,normal.z);
+            }
+            geometry.setAttribute('color',new T.Float32BufferAttribute(colors,3));
+            geometry.setAttribute('normal',new T.Float32BufferAttribute(normals,3));geometry.deleteAttribute('uv');
+            const join=new T.Mesh(geometry,joinMaterial);join.name=name;join.position.y=-.64;hairPivot.add(join);
+        };
         for(const side of [-1,1]){
             const geometry=keep(new T.PlaneGeometry(1,1,36,80));
             const p=geometry.getAttribute('position'),uv=geometry.getAttribute('uv');
             for(let i=0;i<p.count;i++){
                 const theta=Math.PI/2+(uv.getX(i)-.5)*1.12;
-                const y=.78+uv.getY(i)*1.40;
-                const crown=Math.sqrt(Math.max(.0025,1-Math.max(0,(y-1.25)/.95)**2));
+                const y=.78+uv.getY(i)*1.42;
+                const crown=Math.sqrt(Math.max(0,1-Math.max(0,(y-1.25)/.95)**2));
                 p.setXYZ(i,side*.984*crown*Math.sin(theta),y,.854*headDepth*crown*Math.cos(theta));
             }
             const original=geometry.index!,indices:number[]=[];
@@ -194,9 +224,13 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
                 if(((y-1.045)/.175)**2+(z/(.205*headDepth))**2<1)continue;
                 indices.push(...ids);
             }
-            geometry.setIndex(indices);geometry.deleteAttribute('uv');geometry.computeVertexNormals();
-            const join=new T.Mesh(geometry,joinMaterial);join.name=`plain-hair-gap-${side}`;join.position.y=-.64;hairPivot.add(join);
+            geometry.setIndex(indices);finishUnderlay(geometry,`plain-hair-gap-${side}`);
         }
+        // A shallow, closed crown sheet sits just under both hair halves. The
+        // shared apex removes the old minimum-radius tube and its open top.
+        const crown=keep(new T.SphereGeometry(1,64,18,0,Math.PI*2,0,Math.acos((1.94-1.25)/.947)));
+        crown.scale(.982,.947,.852*headDepth);crown.translate(0,1.25,0);
+        finishUnderlay(crown,'plain-hair-crown');
     }
     const smooth=(a:number,b:number,v:number)=>T.MathUtils.smoothstep(v,a,b);
     const animate=(time:number,motion:Motion)=>{
