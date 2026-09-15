@@ -8,6 +8,7 @@ const esc=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'
 const colors=new Set(['lavender','purple','pink','blush','peri','rug']);
 export async function mountHomeEditor(host,{assetBase,initialState,onChange,onBack,storageKey,signal}={}){
  host.classList.add('home3d');host.innerHTML='<div class="h3-stage"></div><div class="h3-ui"></div><div class="h3-loading">正在把家具搬进来…</div>';
+ let suspended=false;
  let destroyed=false,state,catalog,kit,selected=null,panel=null,overview=false,edit=false,message='',error=false,undo=[],redo=[],saved=true;
  let objects=[],animated=[],elapsed=0,manual=false,frame=0,drag=null,pointerDown=null,lastTick=performance.now(),lastDraw=0,dirty=true;
  const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -15,7 +16,7 @@ export async function mountHomeEditor(host,{assetBase,initialState,onChange,onBa
  const qualities={eco:{label:'省电',ratio:.75,fps:30,shadows:false,motion:false,details:1},balanced:{label:'均衡',ratio:1,fps:30,shadows:true,motion:true,details:2},clear:{label:'清晰',ratio:1.5,fps:touch?30:60,shadows:true,motion:true,details:touch?2:4}};
  let quality='eco';try{const saved=localStorage.getItem('sully-home3d-quality');if(qualities[saved])quality=saved}catch{}
  let detailBudget=qualities[quality].details,frameInterval=1000/qualities[quality].fps,orbitMode=false,inTick=false;
- function wake(){if(!destroyed&&!document.hidden&&!frame&&!inTick&&state)frame=requestAnimationFrame(tick)}
+ function wake(){if(!destroyed&&!suspended&&!document.hidden&&!frame&&!inTick&&state)frame=requestAnimationFrame(tick)}
  const materialCache=new Map(),usedMaterials=new Set();
  let renderedFrames=0,category='all';
  const stage=host.querySelector('.h3-stage'),ui=host.querySelector('.h3-ui');
@@ -271,7 +272,7 @@ export async function mountHomeEditor(host,{assetBase,initialState,onChange,onBa
  host.tabIndex=0;host.addEventListener('keydown',keydown,{signal:abort.signal});
  const observer=new ResizeObserver(()=>resize());observer.observe(stage);
  function tick(now=performance.now()){
-  frame=0;if(destroyed||document.hidden)return;inTick=true;const dt=Math.min(.05,(now-lastTick)/1000);lastTick=now;
+  frame=0;if(destroyed||suspended||document.hidden)return;inTick=true;const dt=Math.min(.05,(now-lastTick)/1000);lastTick=now;
   let settling=false;if(!manual&&!document.hidden)elapsed+=dt;
   if(!document.hidden&&now-lastDraw>=frameInterval-.5){
    const breathing=animated.length&&!overview&&!reducedMotion&&qualities[quality].motion;
@@ -299,5 +300,5 @@ export async function mountHomeEditor(host,{assetBase,initialState,onChange,onBa
   for(const a of catalog.filter(a=>a.id!=='shell')){const obj=templates.get(a.id)?.clone(true);if(!obj)continue;ts.add(obj);const b=new THREE.Box3().setFromObject(obj),c=b.getCenter(new THREE.Vector3()),s=b.getSize(new THREE.Vector3());const h=Math.max(s.x,s.y,s.z)*1.3+.1;tc.left=-h*.64;tc.right=h*.64;tc.top=h/2;tc.bottom=-h/2;tc.position.copy(c).add(new THREE.Vector3(6,5,8));tc.lookAt(c);tc.updateProjectionMatrix();renderer.setRenderTarget(target);renderer.render(ts,tc);renderer.readRenderTargetPixels(target,0,0,128,100,pixels);const image=ctx.createImageData(128,100);for(let y=0;y<100;y++)image.data.set(pixels.subarray((99-y)*512,(100-y)*512),y*512);ctx.putImageData(image,0,0);thumbs.set(a.id,canvas.toDataURL());ts.remove(obj)}
   renderer.setRenderTarget(null);target.dispose();dirty=true;wake();renderUI();
  }catch(e){if(destroyed)return {dispose};dispose();host.innerHTML=`<div class="h3-loading"><span>${esc(e.message)}</span><button>重新加载</button></div>`;host.querySelector('button').onclick=()=>location.reload();throw e}
- return {dispose,setVisitor,getState:()=>clone(state),inspect:()=>({ready:true,chibiVisible:resident.visible,chibiMotion:visitorMotion,chibiPosition:resident.position.toArray(),outlineVisible:!!outlineGroup,gridVisible:grid.visible,footprintVisible:footprint.visible,placementValid:drag?.valid??null,quality,pixelRatio:renderer.getPixelRatio(),cameraPosition:camera.position.toArray(),zoom:camera.zoom,undoCount:undo.length,redoCount:redo.length,orbitMode,overview,edit,selected,rooms:state.rooms,activeRoomId:state.activeRoomId,panel,message,saved,assets:catalog.map(a=>a.id),drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,geometries:renderer.info.memory.geometries,textures:renderer.info.memory.textures,materials:materialCache.size,renderedFrames,frameCap:1000/frameInterval,detailRooms:overview?Math.min(detailBudget,state.rooms.length):1}),advanceTime:ms=>{manual=true;elapsed+=ms/1000;for(const a of animated)a.o.position.y=a.y+Math.sin(elapsed*a.speed+a.phase)*a.amplitude;renderer.render(scene,camera)},select,projectItem:id=>{const o=objects.find(o=>o.userData.itemId===id);if(!o)return null;const p=new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3()).project(camera);return {x:(p.x+1)*size.w/2,y:(1-p.y)*size.h/2}}};
+ return {dispose,setSuspended(value){suspended=value;if(value){cancelAnimationFrame(frame);frame=0;}else{dirty=true;lastTick=performance.now();wake();}},setVisitor,getState:()=>clone(state),inspect:()=>({ready:true,chibiVisible:resident.visible,chibiMotion:visitorMotion,chibiPosition:resident.position.toArray(),outlineVisible:!!outlineGroup,gridVisible:grid.visible,footprintVisible:footprint.visible,placementValid:drag?.valid??null,quality,pixelRatio:renderer.getPixelRatio(),cameraPosition:camera.position.toArray(),zoom:camera.zoom,undoCount:undo.length,redoCount:redo.length,orbitMode,overview,edit,selected,rooms:state.rooms,activeRoomId:state.activeRoomId,panel,message,saved,assets:catalog.map(a=>a.id),drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,geometries:renderer.info.memory.geometries,textures:renderer.info.memory.textures,materials:materialCache.size,renderedFrames,frameCap:1000/frameInterval,detailRooms:overview?Math.min(detailBudget,state.rooms.length):1}),advanceTime:ms=>{manual=true;elapsed+=ms/1000;for(const a of animated)a.o.position.y=a.y+Math.sin(elapsed*a.speed+a.phase)*a.amplitude;renderer.render(scene,camera)},select,projectItem:id=>{const o=objects.find(o=>o.userData.itemId===id);if(!o)return null;const p=new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3()).project(camera);return {x:(p.x+1)*size.w/2,y:(1-p.y)*size.h/2}}};
 }

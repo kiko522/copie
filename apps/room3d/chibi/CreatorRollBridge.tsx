@@ -11,14 +11,34 @@ export function CreatorRollBridge({ request, savedState, extraItems, editing=fal
         // This document is an isolated copy of the existing creator. Its functions,
         // palette and rendering remain the source of truth; no user draft is saved.
         let rollBusy=false;
+        let historyEnabled=false,restoring=false,dragging=false,dragRecorded=false;
+        const past=[],future=[];
+        const snapshot=()=>JSON.stringify({selected:state.selected,tintColor:state.tintColor,itemColor:state.itemColor,flipped:state.flipped,eyeSide:state.eyeSide,hairLinked:state.hairLinked,activeItemFocus:state.activeItemFocus,preserveLineart:state.preserveLineart});
+        let present=snapshot();
+        const undoButton=document.createElement('button'),redoButton=document.createElement('button');
+        undoButton.textContent='↶ 撤销';redoButton.textContent='↷ 重做';
+        for(const button of [undoButton,redoButton]){button.className='pill-btn';document.getElementById('btnRandom').parentElement.appendChild(button);}
+        const syncHistory=()=>{undoButton.disabled=!past.length;redoButton.disabled=!future.length;};syncHistory();
+        const renderBeforeHistory=renderCharacter;
+        renderCharacter=function(){
+          const next=snapshot();
+          if(historyEnabled&&!restoring&&next!==present){if(!dragging||!dragRecorded){past.push(present);if(past.length>40)past.shift();dragRecorded=true;}future.length=0;present=next;syncHistory();}
+          return renderBeforeHistory.apply(this,arguments);
+        };
+        const restoreHistory=(from,to)=>{if(!from.length)return;to.push(present);present=from.pop();restoring=true;try{applyFullState(JSON.parse(present));renderTabs();renderPanel();renderCharacter();}finally{restoring=false;syncHistory();}};
+        undoButton.onclick=()=>restoreHistory(past,future);redoButton.onclick=()=>restoreHistory(future,past);
+        document.addEventListener('pointerdown',e=>{dragging=e.target instanceof HTMLInputElement&&e.target.type==='range';dragRecorded=false;},true);
+        for(const name of ['pointerup','pointercancel'])document.addEventListener(name,()=>{dragging=false;},true);
         window.addEventListener('message',async e=>{
           if(e.source!==parent||e.origin!==${JSON.stringify(origin)}||e.data?.type!=='experiment-roll'||rollBusy)return;
           rollBusy=true;const id=e.data.id;
           try{
             if(e.data.extraItems)mergeExtraItems(e.data.extraItems);
             if(!e.data.captureOnly){
+              historyEnabled=false;
               if(e.data.savedState){if(!applyFullState(e.data.savedState))throw Error('无法还原形象');renderCharacter();}
               else randomizeAll();
+              present=snapshot();past.length=0;future.length=0;historyEnabled=true;syncHistory();
             }
             await Promise.all(Object.values(imgCache).filter(x=>x instanceof Promise));
             await Promise.resolve();

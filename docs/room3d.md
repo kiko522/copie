@@ -27,6 +27,10 @@
 
 3D 发片支持「贴头包裹」和「向外伸出」。后者保留完整画布的 x/y 坐标及顶部轮廓，只添加浅弧度，不沿头壳收拢。`chibi/types.ts` 的 `builtinHairModes` 按具体素材 ID 标记已核对的发髻、马尾、猫耳；手动 `assetModes` 优先于内置分类，不按 back2 整栏套用。额外上传发片的分类随该层保存。3D 调整提供 40 步撤销/重做，滑杆单次拖动合并为一步；全部重置清除尺寸、手动分类和额外层，恢复内置默认，可以撤销。选件本身仍由原生捏人器管理。
 
+伸出发片支持 `puff`：透明轮廓的距离场控制前后两面，中间鼓起、边缘收薄，独立的啾啾分别归一化；透明区不填充。`offsetX` / `offsetZ` 为所有发片提供左右、前后平移。捏人器的隔离副本还提供选件与配色的撤销/重做，不修改原始 2D 捏人器文件。
+
+小人素体按材质合并索引分组，避免每个三角形单独绘制。3D 捏人预览复用 WebGLRenderer，静止停绘、动画最高 30 帧，缓存补片取色与透明轮廓距离场；编辑时暂停背后的房间。`test/fixtures/chibi-performance.html` 检查静止帧数、调参画布复用和绘制提交量，当前测试形象为 21 次提交（不代表所有造型或设备帧率）。
+
 `chibi-experiment.html` 直接预览组合场景。「捏小人」包含原生选素材与 3D 调整页签；切入 3D 时捕获当前编辑的分层，不重新随机。四种头发分别调长度、宽度、上下位置与离头距离；最多六层额外发片可以复用后发或上传透明 PNG/WebP，并作为完整外圈薄层渲染。确认后将调整应用到房间，实验形象与参数分别保存到 `chibi-world-experiment-appearance` / `chibi-world-hair-settings`，暂不写入角色正式存档。`test/fixtures/chibi-layers.html` 检查原生 Roll 与 savedState 还原后的各层一致性；房间测试包含初始家具空地及满房拒绝落点。
 
 独立预览：运行 `node art/jellyfish-home/editor-build.mjs`，再运行 `node art/jellyfish-home/server.mjs`，打开 `http://127.0.0.1:4178/assets/editor.html`。预览存储与应用角色数据分开。

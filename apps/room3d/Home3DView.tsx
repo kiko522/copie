@@ -10,7 +10,7 @@ import {CreatorRollBridge} from './chibi/CreatorRollBridge';
 import {createVisitor,decodeParts} from './chibi/visitor';
 import {loadCreatorPartsForRender} from '../../utils/creatorPartsBlob';
 
-export default function Home3DView({value,onChange,onBack,character,parts:previewParts,hair}:{value?:Home3DState;onChange:(value:Home3DState)=>void;onBack:()=>void;character?:CharacterProfile;parts?:Parts;hair?:HairSettings}){
+export default function Home3DView({value,onChange,onBack,character,parts:previewParts,hair,suspended=false}:{value?:Home3DState;onChange:(value:Home3DState)=>void;onBack:()=>void;character?:CharacterProfile;parts?:Parts;hair?:HairSettings;suspended?:boolean}){
  const host=useRef<HTMLDivElement>(null),save=useRef(onChange),back=useRef(onBack),initial=useRef(value);
  const [editor,setEditor]=useState<HomeEditor>(),[parts,setParts]=useState<Parts>(),[residentError,setResidentError]=useState('');
  const [residentAssets,setResidentAssets]=useState<Record<string,string>>({});
@@ -18,10 +18,11 @@ export default function Home3DView({value,onChange,onBack,character,parts:previe
  const [extraItems,setExtraItems]=useState<unknown[]>(),[creatorReady,setCreatorReady]=useState(false);
  const savedState=character?.chibiStudio?.room?.state??character?.chibiStudio?.vr?.state;
  useEffect(()=>{let cancelled=false;if(!savedState)return;loadCreatorPartsForRender().then(items=>{if(!cancelled)setExtraItems(items.map(p=>({...p,categoryKey:p.categoryKey})));}).catch(()=>{if(!cancelled)setResidentError('自定义素材读取失败，请退出小屋重试。');});return()=>{cancelled=true};},[savedState]);
- useEffect(()=>{let cancelled=false;if(!editor||!(previewParts||parts))return;
+ useEffect(()=>{let cancelled=false;if(!editor||suspended||!(previewParts||parts))return;
   createVisitor((previewParts||parts)!,residentHair).then(visitor=>{if(cancelled)visitor.dispose();else {editor.setVisitor?.(visitor);setResidentError('');}}).catch(e=>{if(!cancelled)setResidentError(String(e));});
   return()=>{cancelled=true;editor.setVisitor?.(null)};
- },[editor,previewParts,parts,residentHair]);
+ },[editor,previewParts,parts,residentHair,suspended]);
+ useEffect(()=>{editor?.setSuspended?.(suspended);},[editor,suspended]);
  const [error,setError]=useState('');save.current=onChange;back.current=onBack;
  useEffect(()=>{
   let cancelled=false,editor:{dispose:()=>void}|undefined;const controller=new AbortController();

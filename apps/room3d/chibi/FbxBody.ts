@@ -4,6 +4,10 @@ import type { Parts, Motion } from './types';
 import {defaultHairLayer,hairMode,type HairSettings} from './types';
 import { clothingCanvas } from './partSurfaces';
 import referenceUrl from './reference.fbx?url';
+import {silhouetteDepth} from './puff';
+
+const puffCache=new WeakMap<HTMLImageElement,{alpha:Uint8Array;depth:Float32Array}>();
+const hairColorCache=new WeakMap<HTMLImageElement,WeakMap<HTMLImageElement,(x:number,y:number)=>T.Color>>();
 
 export async function loadBody() { return new FBXLoader().loadAsync(referenceUrl); }
 
@@ -137,7 +141,7 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
         }
         const subset=(g:T.BufferGeometry,triangles:number[])=>{
             const indices:number[]=[];g.clearGroups();
-            triangles.forEach(i=>{g.addGroup(indices.length,3,groups[i/3].materialIndex);indices.push(i,i+1,i+2);});g.setIndex(indices);
+            for(let material=0;material<6;material++){const start=indices.length;for(const i of triangles)if(groups[i/3].materialIndex===material)indices.push(i,i+1,i+2);if(indices.length>start)g.addGroup(start,indices.length-start,material);}g.setIndex(indices);
         };
         for(const side of [-1,1]){
             const handGeo=keep(geo.clone());subset(handGeo,buckets[side>0?2:1]);
@@ -154,6 +158,11 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
         const ringHalf=(keys:string[],rear:boolean,settings=defaultHairLayer,full=false)=>{
             const geometry=keep(new T.PlaneGeometry(1,1,64,80));
             const p=geometry.getAttribute('position'),uv=geometry.getAttribute('uv');
+            let puff:ReturnType<typeof puffCache.get>;
+            if(settings.mode==='project'&&parts[keys[0]]){
+                const image=parts[keys[0]];puff=puffCache.get(image);
+                if(!puff){const c=document.createElement('canvas');c.width=65;c.height=81;const ctx=c.getContext('2d')!;ctx.drawImage(image,0,0,65,81);const pixels=ctx.getImageData(0,0,65,81).data,alpha=new Uint8Array(65*81);for(let i=0;i<alpha.length;i++)alpha[i]=pixels[i*4+3];puff={alpha,depth:silhouetteDepth(alpha,65,81)};puffCache.set(image,puff);}
+            }
             for(let i=0;i<p.count;i++){
                 const u=uv.getX(i),v=uv.getY(i);
                 const sourceY=(1-v)*472;
@@ -161,7 +170,7 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
                     // Preserve the complete source silhouette, including pixels
                     // above or outside the scalp. Only add a shallow bow in z.
                     const x=(u*472-237)/325*1.875,y=(424-sourceY)/336*2;
-                    p.setXYZ(i,x*settings.width,2.2+(y-2.2)*settings.length+settings.offsetY,(rear?-1:1)*(.58+settings.distance-.10*Math.min(1.5,Math.abs(x))));
+                    p.setXYZ(i,x*settings.width,2.2+(y-2.2)*settings.length+settings.offsetY,(rear?-1:1)*(.58+settings.distance-.10*Math.min(1.5,Math.abs(x)))+(puff?.depth[i]??0)*(settings.puff??.16));
                     continue;
                 }
                 const theta=(u-.5)*(full?Math.PI*2:Math.PI);
@@ -176,9 +185,15 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
                 // bangs keep their 2D width instead of stretching with arc length.
                 uv.setXY(i,full?u:(237+x/1.875*325)/472,v);
             }
+            if(puff){
+                const indices:number[]=[],index=geometry.index!;
+                for(let i=0;i<index.count;i+=3){const a=index.getX(i),b=index.getX(i+1),c=index.getX(i+2);if(puff.alpha[a]>32||puff.alpha[b]>32||puff.alpha[c]>32)indices.push(a,b,c);}
+                geometry.setIndex(indices);
+            }
             geometry.computeVertexNormals();
             const material=keep(new T.MeshStandardMaterial({map:makeTexture(keys),alphaTest:.2,side:T.DoubleSide,roughness:1}));
-            const sheet=new T.Mesh(geometry,material);sheet.name=rear?'rear-hair-sheet':'front-hair-sheet';sheet.position.y=-.64;hairPivot.add(sheet);
+            const sheet=new T.Mesh(geometry,material);sheet.name=rear?'rear-hair-sheet':'front-hair-sheet';sheet.position.set(settings.offsetX??0,-.64,settings.offsetZ??0);hairPivot.add(sheet);
+            if(puff&&(settings.puff??.16)>0){const backGeo=keep(geometry.clone()),backP=backGeo.getAttribute('position');for(let i=0;i<backP.count;i++)backP.setZ(i,backP.getZ(i)-2*puff.depth[i]*(settings.puff??.16));backGeo.computeVertexNormals();const backSheet=new T.Mesh(backGeo,material);backSheet.position.copy(sheet.position);hairPivot.add(backSheet);}
         };
         for(const [key,rear,index] of [['back2',true,0],['back1',true,1],['earhair',false,0],['fronthair',false,1]] as const){
             const settings=hair?.layers[key]??defaultHairLayer;
@@ -191,6 +206,9 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
         // hairstyle. Vertex colors carry only a soft color field, never stretched
         // strands or highlights from the original texture.
         const colorField=(keys:string[])=>{
+            const first=parts[keys[0]],second=parts[keys[1]]??first;
+            const cached=first&&second?hairColorCache.get(first)?.get(second):undefined;
+            if(cached)return cached;
             const c=document.createElement('canvas');c.width=c.height=118;
             const ctx=c.getContext('2d')!;for(const key of keys)if(parts[key])ctx.drawImage(parts[key],0,0,118,118);
             const pixels=ctx.getImageData(0,0,118,118).data;
@@ -199,7 +217,10 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
                 const i=(y*118+x)*4;if(pixels[i+3]<200)continue;
                 opaque.push({x,y,color:new T.Color().setRGB(pixels[i]/255,pixels[i+1]/255,pixels[i+2]/255,T.SRGBColorSpace)});
             }
-            return (x:number,y:number)=>{
+            const samples=new Map<string,T.Color>();
+            const sample=(x:number,y:number)=>{
+                const key=`${Math.round(x*200)},${Math.round(y*200)}`;
+                const existing=samples.get(key);if(existing)return existing.clone();
                 const px=(237+x/1.875*325)/4,py=(424-y/2*336)/4;
                 let nearest=Infinity,anchor:typeof opaque[number]|undefined;
                 for(const point of opaque){const d=(point.x-px)**2+(point.y-py)**2;if(d<nearest){nearest=d;anchor=point;}}
@@ -209,8 +230,10 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
                 // across the entire side of the head.
                 const color=new T.Color(0,0,0);let weight=0;
                 for(const point of opaque){const d=(point.x-anchor.x)**2+(point.y-anchor.y)**2;if(d>16)continue;const w=1/(1+d);color.r+=point.color.r*w;color.g+=point.color.g*w;color.b+=point.color.b*w;weight+=w;}
-                return weight?color.multiplyScalar(1/weight):anchor.color.clone();
+                const result=weight?color.multiplyScalar(1/weight):anchor.color.clone();samples.set(key,result);return result.clone();
             };
+            if(first&&second){let bySecond=hairColorCache.get(first);if(!bySecond){bySecond=new WeakMap();hairColorCache.set(first,bySecond);}bySecond.set(second,sample);}
+            return sample;
         };
         const frontColor=colorField(['earhair','fronthair']),rearColor=colorField(['back2','back1']);
         const joinMaterial=keep(new T.MeshStandardMaterial({vertexColors:true,side:T.DoubleSide,roughness:1}));
