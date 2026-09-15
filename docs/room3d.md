@@ -25,6 +25,8 @@
 
 小人与家具共用 renderer；进入当前房间时根据家具的碰撞盒寻找空地，总览隐藏小人。满房无空位时提示收起家具。动作面板提供两款挥手、睡觉、生气和晃动；省电档手动动作播放 4.4 秒后停绘，均衡/清晰继续播放，减少动态效果仅展示静态姿势。未加入寻路或跨房间自主行为，动作不写入房间存档。
 
+3D 发片支持「贴头包裹」和「向外伸出」。后者保留完整画布的 x/y 坐标及顶部轮廓，只添加浅弧度，不沿头壳收拢。`chibi/types.ts` 的 `builtinHairModes` 按具体素材 ID 标记已核对的发髻、马尾、猫耳；手动 `assetModes` 优先于内置分类，不按 back2 整栏套用。额外上传发片的分类随该层保存。3D 调整提供 40 步撤销/重做，滑杆单次拖动合并为一步；全部重置清除尺寸、手动分类和额外层，恢复内置默认，可以撤销。选件本身仍由原生捏人器管理。
+
 `chibi-experiment.html` 直接预览组合场景。「捏小人」包含原生选素材与 3D 调整页签；切入 3D 时捕获当前编辑的分层，不重新随机。四种头发分别调长度、宽度、上下位置与离头距离；最多六层额外发片可以复用后发或上传透明 PNG/WebP，并作为完整外圈薄层渲染。确认后将调整应用到房间，实验形象与参数分别保存到 `chibi-world-experiment-appearance` / `chibi-world-hair-settings`，暂不写入角色正式存档。`test/fixtures/chibi-layers.html` 检查原生 Roll 与 savedState 还原后的各层一致性；房间测试包含初始家具空地及满房拒绝落点。
 
 独立预览：运行 `node art/jellyfish-home/editor-build.mjs`，再运行 `node art/jellyfish-home/server.mjs`，打开 `http://127.0.0.1:4178/assets/editor.html`。预览存储与应用角色数据分开。

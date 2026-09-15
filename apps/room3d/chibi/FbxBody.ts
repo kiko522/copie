@@ -1,7 +1,7 @@
 import * as T from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import type { Parts, Motion } from './types';
-import {defaultHairLayer,type HairSettings} from './types';
+import {defaultHairLayer,hairMode,type HairSettings} from './types';
 import { clothingCanvas } from './partSurfaces';
 import referenceUrl from './reference.fbx?url';
 
@@ -157,6 +157,13 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
             for(let i=0;i<p.count;i++){
                 const u=uv.getX(i),v=uv.getY(i);
                 const sourceY=(1-v)*472;
+                if(settings.mode==='project'){
+                    // Preserve the complete source silhouette, including pixels
+                    // above or outside the scalp. Only add a shallow bow in z.
+                    const x=(u*472-237)/325*1.875,y=(424-sourceY)/336*2;
+                    p.setXYZ(i,x*settings.width,2.2+(y-2.2)*settings.length+settings.offsetY,(rear?-1:1)*(.58+settings.distance-.10*Math.min(1.5,Math.abs(x))));
+                    continue;
+                }
                 const theta=(u-.5)*(full?Math.PI*2:Math.PI);
                 // Same 472px registration as skin/clothes: never fit the opaque
                 // hair bounds to the full sheet, which would lengthen short styles.
@@ -175,10 +182,10 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
         };
         for(const [key,rear,index] of [['back2',true,0],['back1',true,1],['earhair',false,0],['fronthair',false,1]] as const){
             const settings=hair?.layers[key]??defaultHairLayer;
-            ringHalf([key],rear,{...settings,distance:settings.distance+index*.002});
+            ringHalf([key],rear,{...settings,mode:hairMode(hair,key),distance:settings.distance+index*.002});
         }
         for(const layer of hair?.extras??[]){
-            if(parts[layer.source])ringHalf([layer.source],false,layer,true);
+            if(parts[layer.source])ringHalf([layer.source],layer.mode==='project',layer,true);
         }
         // Continue the adjacent painted colors, not the average of the entire
         // hairstyle. Vertex colors carry only a soft color field, never stretched
