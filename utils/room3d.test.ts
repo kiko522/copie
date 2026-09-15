@@ -1,8 +1,19 @@
 import {describe,it,expect} from 'vitest';
 import catalog from '../public/room3d/catalog.json';
-import {createHome,addRoom,validateHome,placementError,findPlace,clone,moveFurniture,snapToSupport} from '../apps/room3d/model.js';
+import {createHome,addRoom,validateHome,placementError,findPlace,clone,moveFurniture,snapToSupport,findResidentSpot} from '../apps/room3d/model.js';
 import {stripSensitiveCardFields} from './characterCard';
 describe('modular homes',()=>{
+ it('finds resident floor space in the furnished starter without changing the layout',()=>{
+  const r=createHome(catalog).rooms[0],before=clone(r);
+  expect(findResidentSpot(r,catalog)).not.toBeNull();expect(r).toEqual(before);
+ });
+ it('does not force a resident into an occupied room, but ignores stored obstacles',()=>{
+  const r=createHome(catalog).rooms[0];
+  const blocker={...catalog[0],id:'blocker',surface:'floor',boxes:[[-4,0,-4,4,4,4]]};
+  r.items=[{id:'blocker',assetId:'blocker',x:0,y:0,z:0,rotation:0,color:null,stored:false}];
+  expect(findResidentSpot(r,[blocker])).toBeNull();
+  r.items[0].stored=true;expect(findResidentSpot(r,[blocker])).not.toBeNull();
+ });
  it('requires a usable support and rejects overhang and occupied tabletop space',()=>{
   const r=createHome(catalog).rooms[0];r.items=[];
   const mug=catalog.find(a=>a.id==='tea_mug')!;

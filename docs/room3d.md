@@ -19,6 +19,14 @@
 
 `apps/room3d/model.js` 管理纯数据和碰撞约束；`editor.js` 管理渲染与编辑；`Home3DView.tsx` 连接 React 生命周期和角色保存。
 
+## Chibi 入住
+
+`apps/room3d/chibi/` 复用发片小人的 FBX 素体、原图分层与动作。`Home3DView` 优先读取 `chibiStudio.room.state`，没有时读取 `vr.state`，并解析本机自定义部件。隔离捏人器渲染副本还原选件与配色，禁止草稿写入；上传的单张成图没有分层，需先在手办柜保存一套形象，不自动随机替换角色。
+
+小人与家具共用 renderer；进入当前房间时根据家具的碰撞盒寻找空地，总览隐藏小人。满房无空位时提示收起家具。动作面板提供两款挥手、睡觉、生气和晃动；省电档手动动作播放 4.4 秒后停绘，均衡/清晰继续播放，减少动态效果仅展示静态姿势。未加入寻路或跨房间自主行为，动作不写入房间存档。
+
+`chibi-experiment.html` 现在直接预览组合场景，可 Roll 换人并返回原单人实验。`test/fixtures/chibi-layers.html` 检查原生 Roll 与 savedState 还原后的各层一致性；房间测试包含初始家具空地及满房拒绝落点。
+
 独立预览：运行 `node art/jellyfish-home/editor-build.mjs`，再运行 `node art/jellyfish-home/server.mjs`，打开 `http://127.0.0.1:4178/assets/editor.html`。预览存储与应用角色数据分开。
 
 ## 渲染预算

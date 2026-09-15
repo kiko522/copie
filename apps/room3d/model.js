@@ -79,6 +79,14 @@ export function addRoom(home,direction){
  const next={id:uid(),name:`新房间 ${home.rooms.length+1}`,x,z,level,wall:'#FFF2E3',items:[]};
  home.rooms.push(next);home.activeRoomId=next.id;return next;
 }
+export function findResidentSpot(room,catalog){
+ const obstacles=room.items.filter(i=>!i.stored&&!['rug','ceiling'].includes(catalog.find(a=>a.id===i.assetId)?.surface)).flatMap(i=>boxes(i,catalog.find(a=>a.id===i.assetId)));
+ for(let z=2.05;z>=-1.65;z-=.25)for(const x of [0,.35,-.35,.7,-.7,1.05,-1.05,1.4,-1.4,1.75,-1.75,2.1,-2.1]){
+  const body=[x-.28,.18,z-.28,x+.28,.7,z+.28],head=[x-.7,.7,z-.52,x+.7,1.8,z+.52];
+  if(!obstacles.some(b=>[body,head].some(a=>a[0]<b[3]&&a[3]>b[0]&&a[1]<b[4]&&a[4]>b[1]&&a[2]<b[5]&&a[5]>b[2])))return [x,.18,z];
+ }
+ return null;
+}
 function boxes(item,asset){
  const a=item.rotation*Math.PI/180,c=Math.cos(a),s=Math.sin(a);
  return asset.boxes.map(b=>{

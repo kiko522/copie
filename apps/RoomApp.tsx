@@ -1669,7 +1669,7 @@ ${!shouldGenerateTodo ? `(系统: 今日待办已存在，无需生成，请忽�
     // PIXEL HOME SCREEN
     if (viewState === 'home3D' && char) {
         return <React.Suspense fallback={<div className="h-full grid place-items-center bg-[#e8dde7] text-sm text-purple-700">正在打开小屋…</div>}>
-            <Home3DView key={char.id} value={char.home3D} onChange={value => updateCharacter(char.id, { home3D: value })} onBack={() => setViewState('room')} />
+            <Home3DView key={char.id} character={char} value={char.home3D} onChange={value => updateCharacter(char.id, { home3D: value })} onBack={() => setViewState('room')} />
         </React.Suspense>;
     }
     if (viewState === 'pixelHome' && char) {
