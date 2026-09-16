@@ -377,6 +377,11 @@ for x in [-2.36,-.20]:box('Guardrail newel',(x,.29,2.69),(.14,.14,.83),M['cream'
 box('Thick bed guardrail',(-1.28,.29,2.99),(2.42,.14,.13),M['woodLight'],.055)
 for i,x in enumerate([-1.96,-1.3,-.64]):
     rod('Guardrail spindle',(x,.29,2.38),(x,.29,2.96),.036,M['cream']);star('Guardrail sea star',(x,.19,2.69),.16,M['pink' if i%2 else 'cream'])
+# Side guards belong to the bed, even when room walls are hidden. Leave the
+# front of the stair-side guard open for the landing onto the mattress.
+for side,x,y,length in [('right',-.20,1.28,1.96),('left',-2.36,1.595,1.33)]:
+    box('Loft side guard '+side,(x,y,2.70),(.12,length,.55),M['cream'],.025)
+    box('Loft side guard cap '+side,(x,y,3.00),(.15,length+.02,.10),M['woodLight'],.035)
 for i in range(6):
     y=-1.53+i*.335;h=(i+1)*.344
     box('Wide low stair %02d'%i,(-2.58,y,.145+h/2),(.69,.345,h),M['cream'],.04)

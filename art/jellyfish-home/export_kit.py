@@ -60,6 +60,9 @@ def classify(o):
     return None
 sets={k:[] for k in INFO}
 for o in list(scene.objects):
+    if o.name.startswith(('Right low parapet','Right parapet cap','Rounded open-front corner')):
+        bpy.data.objects.remove(o,do_unlink=True)
+        continue
     if o.type in {'MESH','CURVE','EMPTY'}:
         k=classify(o)
         if k:sets[k].append(o)
@@ -67,6 +70,10 @@ for o in list(scene.objects):
 for source in list(scene.objects):
     if source.name.startswith(('Rounded desk top','Desk chunky leg','Desk drawer')):
         copy=source.copy();copy.data=source.data.copy();copy.parent=None;copy.matrix_world=source.matrix_world.copy();scene.collection.objects.link(copy);sets['worktable'].append(copy)
+catalog_path=os.path.join(PUBLIC,'catalog.json')
+external_assets=[]
+if os.path.exists(catalog_path):
+    with open(catalog_path,encoding='utf8') as f:external_assets=[a for a in json.load(f) if a.get('url')]
 manifest=[]
 for k,objects in sets.items():
     if not objects:continue
@@ -78,6 +85,7 @@ for k,objects in sets.items():
     center=Vector(((lo.x+hi.x)/2,(lo.y+hi.y)/2,lo.z))
     if k=='shell':center=Vector((0,0,0))
     root=bpy.data.objects.new('asset_'+k,None);scene.collection.objects.link(root);root.location=center;root['assetId']=k;bpy.context.view_layer.update()
+    if k=='loft' and any(o.name.startswith('Loft side guard ') for o in objects):root['loftSideGuards']=1
     for o in objects:
         if o.parent is None or o.parent not in objects:
             matrix=o.matrix_world.copy();o.parent=root;o.matrix_world=matrix
@@ -139,6 +147,8 @@ for o in scene.objects:
         o.select_set(True)
         for child in o.children_recursive:child.select_set(True)
 bpy.ops.export_scene.gltf(filepath=os.path.join(PUBLIC,'kit.glb'),export_format='GLB',use_selection=True,export_extras=True,export_animations=False)
+manifest.extend(external_assets)
+for a in external_assets:shutil.copy2(os.path.join(PUBLIC,a['url']),os.path.join(OUT,a['url']))
 with open(os.path.join(PUBLIC,'catalog.json'),'w',encoding='utf8') as f:json.dump(manifest,f,ensure_ascii=False,indent=2)
 for file in ['kit.glb','catalog.json']:shutil.copy2(os.path.join(PUBLIC,file),os.path.join(OUT,file))
 print('MODULAR_ASSETS',len(manifest),flush=True)

@@ -1,5 +1,6 @@
 export type Parts = Record<string, HTMLImageElement>;
 export type HairMode='wrap'|'project';
+// `puff` keeps its stored key for compatibility; it now controls curved-sheet depth.
 export interface HairLayer { length:number; width:number; offsetY:number; distance:number; mode?:HairMode; offsetX?:number; offsetZ?:number; puff?:number; }
 export interface ExtraHair extends HairLayer { id:string; source:string; src?:string; }
 export interface HairSettings { layers:Record<string,HairLayer>; extras:ExtraHair[]; assetModes?:Record<string,HairMode>; assets?:Record<string,string>; }
@@ -14,4 +15,7 @@ export function selectedHairAssets(state:unknown):Record<string,string>{
  return Object.fromEntries(['fronthair','earhair','back1','back2'].flatMap(key=>typeof selected?.[key]==='string'?[[key,selected[key] as string]]:[]));
 }
 export const defaultHairLayer:HairLayer={length:1,width:1,offsetY:0,distance:0,offsetX:0,offsetZ:0,puff:.16};
-export type Motion = 'idle' | 'wave' | 'wave-cute' | 'wave-calm' | 'sleep' | 'angry' | 'walk' | 'dance';
+export type Motion = 'idle' | 'sit' | 'wave' | 'wave-cute' | 'wave-calm' | 'sleep' | 'angry' | 'walk' | 'dance' | 'water' | 'computer' | 'stream' | 'race' | 'rhythm' | 'eat';
+export type Posture = 'standing' | 'seated';
+
+export interface ActivityPose {hands:number[][];kind:string;rhythm?:{offset:number[];hands:number[][];keys:string[]}[]}

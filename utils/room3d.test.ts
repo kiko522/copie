@@ -25,8 +25,18 @@ describe('modular homes',()=>{
   expect(placementError({...cup,x:table.x+1},r,catalog)).toContain('台面');
   expect(placementError({...cup,supportId:null},r,catalog)).toContain('桌台');
  });
+ it.each([0,90,180,270])('adds and restores a TV on a cabinet facing %i degrees',rotation=>{
+  const home=createHome(catalog),r=home.rooms[0];r.items=[{id:'cabinet',assetId:'media_cabinet',x:.2,y:.15,z:-.3,rotation,color:null,stored:false}];
+  const tv=findPlace(catalog.find(a=>a.id==='small_television')!,r,catalog,'tv');expect(tv.rotation).toBe(rotation);expect(tv.supportId).toBe('cabinet');expect(placementError(tv,r,catalog)).toBe('');r.items.push(tv);
+  tv.stored=true;tv.supportId=null;const restored=findPlace(catalog.find(a=>a.id==='small_television')!,r,catalog,tv.id);expect(restored.rotation).toBe(rotation);expect(restored.supportId).toBe('cabinet');Object.assign(tv,restored);expect(validateHome(home,catalog)).toEqual(home);
+ });
+ it('does not create a TV on an undersized or fully occupied support',()=>{
+  const r=createHome(catalog).rooms[0];r.items=[{id:'table',assetId:'table',x:0,y:.15,z:0,rotation:90,color:null,stored:false}];const tv=catalog.find(a=>a.id==='small_television')!;expect(()=>findPlace(tv,r,catalog)).toThrow('台面');
+  r.items[0].assetId='media_cabinet';r.items.push(findPlace(tv,r,catalog));expect(()=>findPlace(tv,r,catalog)).toThrow('台面');
+ });
  it('moves and rotates supported objects together, and rejects a whole-group collision atomically',()=>{
   const r=createHome(catalog).rooms[0];r.items=r.items.filter(i=>i.assetId==='table'||i.supportId);
+  r.items.push(findPlace(catalog.find(a=>a.id==='tea_mug')!,r,catalog));
   const table=r.items.find(i=>i.assetId==='table')!,children=r.items.filter(i=>i.supportId===table.id),before=clone(r);
   moveFurniture(r,table.id,{x:table.x-.2,rotation:90},catalog);
   for(const child of children){const now=r.items.find(i=>i.id===child.id)!;expect(now.x).toBeCloseTo(table.x-.2+child.z-table.z);expect(now.z).toBeCloseTo(table.z-child.x+table.x);expect(now.rotation).toBe(90)}
@@ -69,11 +79,12 @@ describe('modular homes',()=>{
  });
  it('lets a working desk occupy the usable space under a loft',()=>{
   const s=createHome(catalog),r=s.rooms[0];r.items=r.items.filter(i=>['loft','desk'].includes(i.assetId));
+  for(const assetId of ['loft','desk']){const a=catalog.find(a=>a.id===assetId)!;r.items.push({id:assetId,assetId,x:a.default[0],y:a.default[1],z:a.default[2],rotation:0,color:null,stored:false});}
   const desk=r.items.find(i=>i.assetId==='desk')!;
   expect(placementError(desk,r,catalog)).toBe('');
  });
  it('keeps recoloring and storage per instance through a JSON round trip',()=>{
-  const s=createHome(catalog),r=s.rooms[0],first=r.items.find(i=>i.assetId==='sofa')!;
+  const s=createHome(catalog),r=s.rooms[0],first=r.items.find(i=>i.assetId==='table')!;
   const second={...first,id:'duplicate',color:'#A5B99A',stored:true};r.items.push(second);
   const next=validateHome(JSON.parse(JSON.stringify(s)),catalog);
   expect(next.rooms[0].items.find(i=>i.id===first.id)?.color).toBeNull();

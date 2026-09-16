@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {buildBody,loadBody} from './FbxBody';
-import type {Parts,Motion,HairSettings} from './types';
+import type {Parts,Motion,Posture,HairSettings,ActivityPose} from './types';
 import type {RollResult} from './CreatorRollBridge';
 
 export async function decodeParts(result:RollResult):Promise<Parts>{
@@ -17,6 +17,7 @@ export async function createVisitor(parts:Parts,hair?:HairSettings){
  // Keep the painted features legible under the room's brighter directional light.
  body.root.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=false;o.receiveShadow=false;for(const m of Array.isArray(o.material)?o.material:[o.material])if(m instanceof THREE.MeshStandardMaterial){m.emissive.set('#ffffff');m.emissiveIntensity=.04;}}});
  let disposed=false;
- return {root,animate(time:number,motion:Motion){body.animate(time,motion);},dispose(){if(disposed)return;disposed=true;root.removeFromParent();for(const resource of body.resources)resource.dispose();}};
+ // The body keeps its original contact plane; action feet hang independently.
+ return {root,seatOffset:0,animate(time:number,motion:Motion,posture:Posture='standing',activity?:ActivityPose){body.animate(time,motion,posture,activity);},dispose(){if(disposed)return;disposed=true;root.removeFromParent();for(const resource of body.resources)resource.dispose();}};
 }
 export type ChibiVisitor=Awaited<ReturnType<typeof createVisitor>>;

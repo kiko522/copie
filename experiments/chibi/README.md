@@ -1,5 +1,9 @@
 # Chibi acrylic stand experiment
 
+2026-09-16 — Wrapped back1 additionally has a thin inner wisp layer (`rearHairLiner.ts`): source side/top wisps project outward while the cap root is tucked inside the scalp. It shares the layer transforms and solid color; top details retain their shape instead of being height-clamped. A shallow .022 half-depth curved shell adds subtle roundness and closes the rim. The automatic liner is not a saved extra layer and is absent for projected back1/full extra wraps. Back2 retains its original artwork.
+
+2026-09-16 — Active outward hair now uses paired curved sheets (`apps/room3d/chibi/hairShell.ts`). Both faces reuse the same source artwork and source-canvas UVs. Elliptical cross-sections follow each disconnected tuft's centerline; a rounded, untextured hair-colored rim joins front and rear. Subpixel contours preserve holes and thin tips. This replaces the old silhouette-distance padding. The existing saved `puff` value now controls curved-sheet depth and is labelled 发片厚度. Ordinary scalp-wrap hair is unchanged. Nine hair geometry/classification/seam tests and front/side/rear browser checks passed.
+
 Current preview: `/chibi-experiment.html`, using the port printed by `pnpm dev`. Independent from the app; no entry or database writes.
 
 `AcrylicStand.tsx` uses the original composited 2D chibi without projection or facial repositioning. It trims transparent margins, builds a softly rounded outer acrylic silhouette from horizontal alpha spans, sandwiches the print between two beveled clear sheets, and seats a clear tab in a lavender acrylic base. Thin transparent surfaces preserve print sharpness; the base uses transmission. The same print is visible reversed from behind. Rotation and original-image comparison remain available.
@@ -27,3 +31,6 @@ Decoration routing: split the original decor canvas at the same source-Y boundar
 Head proportion adjustment: head Z depth is 68% of the supplied FBX, blended above the neck. Front-view width/height and UV coordinates are preserved; both hair half-sheets and the plain gap underlays (including ear openings) use the same depth factor. Body and hands retain their original dimensions.
 
 Depth/lighting balance: head and matching hair depth revised from 68% to 82% of the original. Replaced strong directional contrast with neutral ambient/hemisphere fill, weaker key/rim lights and softer ground shadow settings.
+
+
+Room boundaries (2026-09-16): the world preview now includes cutaway/dollhouse/hidden wall views, shared-boundary merge/split, and wide hinged/arched/sliding doors with floor-click pathfinding. Preview home state persists independently under `chibi-world-experiment-home`; appearance and hair keys remain separate. See docs/room3d.md for interaction and collision rules.

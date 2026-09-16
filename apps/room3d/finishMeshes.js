@@ -1,0 +1,58 @@
+import * as T from 'three';
+import {ROOM_EDGES} from './building.js';
+import {wallVisible} from './topology.js';
+import {wallFinishPanels,floorFinishBounds} from './finishes.js';
+
+// Tiny mathematical patterns on shared standard materials: no image downloads,
+// textures, per-tile meshes, or animation. Coordinates are measured in room units.
+export function createRoomFinishes(){
+ const materials=new Map(),used=new Set();
+ function material(kind,style,color){
+  const key=[kind,style,color].join('/');used.add(key);if(materials.has(key))return materials.get(key);
+  const m=new T.MeshStandardMaterial({color,roughness:.93,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});m.name=key;
+  const formula=kind==='floor'?{
+   wood:'vec2 q=vec2(vFinishUV.x/1.8+mod(floor(vFinishUV.y/.34),2.)*.5,vFinishUV.y/.34); vec2 f=fract(q); float d=min(min(f.x,1.-f.x),min(f.y,1.-f.y));float aa=max(fwidth(d),.001);float line=1.-smoothstep(.012-aa,.012+aa,d); shade=-line*.20+.035*sin(floor(q.y)*2.3);',
+   tile:'vec2 f=fract(vFinishUV/.72);float d=min(min(f.x,1.-f.x),min(f.y,1.-f.y));float aa=max(fwidth(d),.001);float line=1.-smoothstep(.012-aa,.012+aa,d);shade=line*.23;',
+   checker:'shade=mod(floor(vFinishUV.x/.72)+floor(vFinishUV.y/.72),2.)*.25;',
+  }[style]:{
+   stripe:'shade=step(.56,fract(vFinishUV.x/.32))*.15;',
+   dot:'vec2 q=vec2(vFinishUV.x/.42+mod(floor(vFinishUV.y/.42),2.)*.5,vFinishUV.y/.42);shade=(1.-smoothstep(.075,.105,length(fract(q)-.5)))*-.18;',
+   panel:'float lower=1.-step(1.25,vFinishUV.y);float seam=1.-smoothstep(.012,.026,min(fract(vFinishUV.x/.58),1.-fract(vFinishUV.x/.58)));shade=-lower*(.12+seam*.08)+(1.-smoothstep(.02,.035,abs(vFinishUV.y-1.25)))*.16;',
+  }[style];
+  if(formula){m.onBeforeCompile=shader=>{
+   shader.vertexShader='varying vec2 vFinishUV;\n'+shader.vertexShader.replace('#include <uv_vertex>','#include <uv_vertex>\nvFinishUV=uv;');
+   shader.fragmentShader='varying vec2 vFinishUV;\n'+shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>\nfloat shade=0.;${formula}\ndiffuseColor.rgb=mix(diffuseColor.rgb,shade>=0.?vec3(1.):vec3(0.),abs(shade));`);
+  };m.customProgramCacheKey=()=>kind+'/'+style;}
+  materials.set(key,m);return m;
+ }
+ function mesh(g,mat,roomId){g.userData.owned=true;const m=new T.Mesh(g,mat);m.userData.roomId=roomId;m.receiveShadow=true;return m;}
+ function panelGeometry(p){
+  const shape=new T.Shape();shape.moveTo(p.lo,p.top);shape.lineTo(p.lo,p.bottom);
+  if(p.arch){const mid=(p.lo+p.hi)/2,w=(p.hi-p.lo)/2;for(let i=0;i<=24;i++){const a=Math.PI-i*Math.PI/24;shape.lineTo(mid+Math.cos(a)*w,p.bottom+Math.sin(a)*.24);}}
+  else shape.lineTo(p.hi,p.bottom);
+  shape.lineTo(p.hi,p.top);shape.closePath();return new T.ShapeGeometry(shape);
+ }
+ function add(room,home,catalog,wallView){
+  const root=new T.Group();root.name='room-finishes';
+  if(room.floorStyle&&room.floorStyle!=='original'){
+   const [x,z,X,Z]=floorFinishBounds,g=new T.PlaneGeometry(X-x,Z-z),uv=g.attributes.uv;
+   for(let i=0;i<uv.count;i++)uv.setXY(i,x+uv.getX(i)*(X-x),z+uv.getY(i)*(Z-z));
+   const floor=mesh(g,material('floor',room.floorStyle,room.floor||'#dfc7ad'),room.id);floor.rotation.x=-Math.PI/2;floor.position.y=.16;root.add(floor);
+  }
+  for(const p of wallFinishPanels(home,room,catalog)){
+   const e=ROOM_EDGES[p.edge],g=panelGeometry(p),pos=g.attributes.position,uv=g.attributes.uv;
+   const inward=-Math.sign(e.at),flip=e.axis==='z'?inward:-inward;
+   // ShapeGeometry has physical XY UVs. Orient the plane inward; maintain the
+   // same along-wall coordinates when flipped, so arch openings stay aligned.
+   for(let i=0;i<pos.count;i++){const along=pos.getX(i),y=pos.getY(i);uv.setXY(i,along,y);pos.setX(i,along*flip);}
+   if(flip<0){const idx=g.index;for(let i=0;i<idx.count;i+=3){const v=idx.getX(i);idx.setX(i,idx.getX(i+2));idx.setX(i+2,v);}g.computeVertexNormals();}
+   const wall=mesh(g,material('wall',room.wallStyle||'solid',room.wall),room.id);
+   wall.rotation.y=e.axis==='z'?(inward>0?0:Math.PI):(inward>0?Math.PI/2:-Math.PI/2);
+   if(e.axis==='x'){wall.position.x=e.at+inward*.112;}else wall.position.z=e.at+inward*.112;
+   wall.position.y=.15;wall.userData.boundaryEdge=p.edge;if(p.itemId)wall.userData.itemId=p.itemId;
+   wall.visible=wallVisible(wallView,p.edge,p.internal);root.add(wall);
+  }
+  return root;
+ }
+ return {add,begin(){used.clear();},end(){for(const [key,m]of materials)if(!used.has(key)){m.dispose();materials.delete(key);}},dispose(){for(const m of materials.values())m.dispose();materials.clear();},get count(){return materials.size;}};
+}

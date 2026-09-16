@@ -1,12 +1,17 @@
+import {eatingHand} from '../diningMotion.js';
+import {rhythmFrame} from '../rhythm.js';
+import type {ActivityPose} from './types';
 import * as T from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
-import type { Parts, Motion } from './types';
+import type { Parts, Motion, Posture } from './types';
 import {defaultHairLayer,hairMode,type HairSettings} from './types';
 import { clothingCanvas,composeGarments } from './partSurfaces';
 import referenceUrl from './reference.fbx?url';
-import {silhouetteDepth} from './puff';
+import {hairContours,createHairShell} from './hairShell';
+import {createHairSeam} from './hairSeam';
+import {createRearHairLiner,simplifyLinerContours} from './rearHairLiner';
 
-const puffCache=new WeakMap<HTMLImageElement,{alpha:Uint8Array;depth:Float32Array}>();
+const contourCache=new WeakMap<HTMLImageElement,ReturnType<typeof hairContours>>();
 const hairColorCache=new WeakMap<HTMLImageElement,WeakMap<HTMLImageElement,(x:number,y:number)=>T.Color>>();
 
 export async function loadBody() { return new FBXLoader().loadAsync(referenceUrl); }
@@ -131,7 +136,7 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
             p.setZ(i,p.getZ(i)*(1-(1-headDepth)*weight));
         }
         p.needsUpdate=true;smoothNormals();
-        const mesh=new T.Mesh(geo,[front,back,backCloth,frontCloth,frontScalp,rearScalp]);mesh.castShadow=true;body.add(mesh);surfaces.push(mesh);
+        const mesh=new T.Mesh(geo,[front,back,backCloth,frontCloth,frontScalp,rearScalp]);mesh.name='chibi-body';mesh.castShadow=true;body.add(mesh);surfaces.push(mesh);
         // Separate original hand triangles so gestures are rigid transforms:
         // no vertex displacement can elongate the little hand or its sleeve.
         const groups=geo.groups.map((g:{start:number;count:number;materialIndex?:number})=>({...g}));
@@ -147,33 +152,61 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
         for(const side of [-1,1]){
             const handGeo=keep(geo.clone());subset(handGeo,buckets[side>0?2:1]);
             handGeo.translate(-side*.415,-.51,0);
-            const hand=new T.Mesh(handGeo,mesh.material);hand.position.set(side*.415,.51,0);body.add(hand);hands.push({mesh:hand,side});
+            const hand=new T.Mesh(handGeo,mesh.material);hand.name=`chibi-hand-${side}`;hand.position.set(side*.415,.51,0);body.add(hand);hands.push({mesh:hand,side});
         }
         subset(geo,buckets[0]);
         deformers.push({geometry:geo,rest:Float32Array.from(p.array),smoothNormals});
     });
     body.updateMatrixWorld(true);
+    // Action-only toy limbs: four independent round pieces, with no stretched
+    // upper arms or legs. Standing idle retains the original chibi silhouette.
+    const actionLimbs:Array<{mesh:T.Mesh;side:number;foot:boolean}>=[];
+    const ballGeometry=keep(new T.SphereGeometry(.105,16,12));
+    const handMaterial=keep(new T.MeshStandardMaterial({color:skin,roughness:1}));
+    for(const side of [-1,1]){
+        const shoeCanvas=frontCloth.map?.image as HTMLCanvasElement|undefined;
+        let shoeColor=skin;
+        if(shoeCanvas?.getContext){const pixels=shoeCanvas.getContext('2d')!.getImageData(Math.round(237+side*.19/1.875*325)-2,413,5,5).data;let r=0,g=0,b=0;for(let i=0;i<pixels.length;i+=4){r+=pixels[i];g+=pixels[i+1];b+=pixels[i+2];}shoeColor=`rgb(${r/25},${g/25},${b/25})`;}
+        const shoeMaterial=keep(new T.MeshStandardMaterial({color:shoeColor,roughness:1}));
+        for(const foot of [false,true]){const mesh=new T.Mesh(ballGeometry,foot?shoeMaterial:handMaterial);mesh.name=`chibi-action-${foot?'foot':'hand'}-${side}`;mesh.visible=false;body.add(mesh);actionLimbs.push({mesh,side,foot});}
+    }
     if(appearance!=='skin'){
         // Front and rear are two halves of one shared, zero-thickness surface.
         // Both use identical seam positions at +/- PI/2; only their texture differs.
+        const contoursFor=(image:HTMLImageElement)=>{
+            let contours=contourCache.get(image);
+            if(!contours){
+                const canvas=document.createElement('canvas');canvas.width=canvas.height=192;
+                const ctx=canvas.getContext('2d')!;ctx.drawImage(image,0,0,192,192);
+                const pixels=ctx.getImageData(0,0,192,192).data,alpha=new Uint8Array(192*192);
+                for(let i=0;i<alpha.length;i++)alpha[i]=pixels[i*4+3];
+                contours=hairContours(alpha,192,192);contourCache.set(image,contours);
+            }
+            return contours;
+        };
         const ringHalf=(keys:string[],rear:boolean,settings=defaultHairLayer,full=false)=>{
+            const solidRear=keys.includes('back1');
+            const rearShade=solidRear&&parts[keys[0]]?average(parts[keys[0]]):undefined;
+            if(settings.mode==='project'&&parts[keys[0]]){
+                const image=parts[keys[0]];
+                const contours=contoursFor(image);
+                if(!contours.length)return;
+                const geometry=keep(createHairShell(contours,settings.puff??.16)),p=geometry.getAttribute('position');
+                for(let i=0;i<p.count;i++){
+                    const x=p.getX(i),y=p.getY(i);
+                    p.setXYZ(i,x*settings.width,2.2+(y-2.2)*settings.length+settings.offsetY,p.getZ(i)+(rear?-1:1)*(.58+settings.distance-.10*Math.min(1.5,Math.abs(x))));
+                }
+                geometry.computeVertexNormals();
+                const face=keep(new T.MeshStandardMaterial(solidRear?{color:rearShade,side:T.DoubleSide,roughness:1}:{map:makeTexture(keys),alphaTest:.2,side:T.DoubleSide,roughness:1}));
+                const rim=keep(new T.MeshStandardMaterial({color:average(image),side:T.DoubleSide,roughness:1}));
+                const sheet=new T.Mesh(geometry,[face,rim]);sheet.name=rear?'rear-hair-sheet':'front-hair-sheet';sheet.userData.hairConstruction='paired-sheets';sheet.position.set(settings.offsetX??0,-.64,settings.offsetZ??0);hairPivot.add(sheet);
+                return;
+            }
             const geometry=keep(new T.PlaneGeometry(1,1,64,80));
             const p=geometry.getAttribute('position'),uv=geometry.getAttribute('uv');
-            let puff:ReturnType<typeof puffCache.get>;
-            if(settings.mode==='project'&&parts[keys[0]]){
-                const image=parts[keys[0]];puff=puffCache.get(image);
-                if(!puff){const c=document.createElement('canvas');c.width=65;c.height=81;const ctx=c.getContext('2d')!;ctx.drawImage(image,0,0,65,81);const pixels=ctx.getImageData(0,0,65,81).data,alpha=new Uint8Array(65*81);for(let i=0;i<alpha.length;i++)alpha[i]=pixels[i*4+3];puff={alpha,depth:silhouetteDepth(alpha,65,81)};puffCache.set(image,puff);}
-            }
             for(let i=0;i<p.count;i++){
                 const u=uv.getX(i),v=uv.getY(i);
                 const sourceY=(1-v)*472;
-                if(settings.mode==='project'){
-                    // Preserve the complete source silhouette, including pixels
-                    // above or outside the scalp. Only add a shallow bow in z.
-                    const x=(u*472-237)/325*1.875,y=(424-sourceY)/336*2;
-                    p.setXYZ(i,x*settings.width,2.2+(y-2.2)*settings.length+settings.offsetY,(rear?-1:1)*(.58+settings.distance-.10*Math.min(1.5,Math.abs(x)))+(puff?.depth[i]??0)*(settings.puff??.16));
-                    continue;
-                }
                 const theta=(u-.5)*(full?Math.PI*2:Math.PI);
                 // Same 472px registration as skin/clothes: never fit the opaque
                 // hair bounds to the full sheet, which would lengthen short styles.
@@ -186,15 +219,23 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
                 // bangs keep their 2D width instead of stretching with arc length.
                 uv.setXY(i,full?u:(237+x/1.875*325)/472,v);
             }
-            if(puff){
-                const indices:number[]=[],index=geometry.index!;
-                for(let i=0;i<index.count;i+=3){const a=index.getX(i),b=index.getX(i+1),c=index.getX(i+2);if(puff.alpha[a]>32||puff.alpha[b]>32||puff.alpha[c]>32)indices.push(a,b,c);}
-                geometry.setIndex(indices);
-            }
             geometry.computeVertexNormals();
-            const material=keep(new T.MeshStandardMaterial({map:makeTexture(keys),alphaTest:.2,side:T.DoubleSide,roughness:1}));
+            const map=makeTexture(keys);
+            if(rearShade){
+                // Preserve the alpha silhouette while replacing only painted RGB.
+                const ctx=(map.image as HTMLCanvasElement).getContext('2d')!;
+                ctx.globalCompositeOperation='source-in';ctx.fillStyle=rearShade;ctx.fillRect(0,0,472,472);ctx.globalCompositeOperation='source-over';map.needsUpdate=true;
+            }
+            const material=keep(new T.MeshStandardMaterial({map,alphaTest:.2,side:T.DoubleSide,roughness:1}));
             const sheet=new T.Mesh(geometry,material);sheet.name=rear?'rear-hair-sheet':'front-hair-sheet';sheet.position.set(settings.offsetX??0,-.64,settings.offsetZ??0);hairPivot.add(sheet);
-            if(puff&&(settings.puff??.16)>0){const backGeo=keep(geometry.clone()),backP=backGeo.getAttribute('position');for(let i=0;i<backP.count;i++)backP.setZ(i,backP.getZ(i)-2*puff.depth[i]*(settings.puff??.16));backGeo.computeVertexNormals();const backSheet=new T.Mesh(backGeo,material);backSheet.position.copy(sheet.position);hairPivot.add(backSheet);}
+            if(solidRear&&!full){
+                const contours=parts[keys[0]]?contoursFor(parts[keys[0]]):[];
+                if(!contours.length)return;
+                const surface=createHairShell(simplifyLinerContours(contours),.022,.1);
+                const linerMaterial=keep(new T.MeshStandardMaterial({color:rearShade,side:T.DoubleSide,roughness:1}));
+                const liner=new T.Mesh(keep(createRearHairLiner(settings,headDepth,surface)),linerMaterial);
+                liner.name='rear-hair-wisp-liner';liner.position.copy(sheet.position);hairPivot.add(liner);
+            }
         };
         for(const [key,rear,index] of [['back2',true,0],['back1',true,1],['earhair',false,0],['fronthair',false,1]] as const){
             const settings=hair?.layers[key]??defaultHairLayer;
@@ -236,18 +277,20 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
             if(first&&second){let bySecond=hairColorCache.get(first);if(!bySecond){bySecond=new WeakMap();hairColorCache.set(first,bySecond);}bySecond.set(second,sample);}
             return sample;
         };
-        const frontColor=colorField(['earhair','fronthair']),rearColor=colorField(['back2','back1']);
+        const frontColor=colorField(['earhair','fronthair']);
+        const rearBase=new T.Color(average(parts.back1||parts.back2||parts.fronthair));
+        const rearColor=(_x:number,_y:number)=>rearBase.clone();
         const joinMaterial=keep(new T.MeshStandardMaterial({vertexColors:true,side:T.DoubleSide,roughness:1}));
         const finishUnderlay=(geometry:T.BufferGeometry,name:string)=>{
             const p=geometry.getAttribute('position'),colors:number[]=[],normals:number[]=[];
             for(let i=0;i<p.count;i++){
                 const x=p.getX(i),y=p.getY(i),z=p.getZ(i);
                 const radius=Math.sqrt(Math.max(0,1-Math.max(0,(y-1.25)/.95)**2));
-                // Sample the actual front/back boundaries of the side patch.
-                // Sampling its outermost x in the middle picks a different dark
-                // strand (or outline), producing a stripe on asymmetric styles.
+                // Mirror the positive-x side's color field onto the other side.
+                // Only the filler is symmetric; original hair artwork, geometry
+                // and ear openings retain their own silhouettes and lighting.
                 const sidePatch=name.startsWith('plain-hair-gap');
-                const sampleX=sidePatch?Math.sign(x)*.984*radius*Math.cos(.56):x;
+                const sampleX=sidePatch?.984*radius*Math.cos(.56):Math.abs(x);
                 const angle=Math.atan2(z/(.854*headDepth),Math.abs(x)/.984);
                 const blend=sidePatch?T.MathUtils.smoothstep(angle,-.56,.56):T.MathUtils.smoothstep(z,-.24,.24);
                 const color=rearColor(sampleX,y).lerp(frontColor(sampleX,y),blend);colors.push(color.r,color.g,color.b);
@@ -258,23 +301,9 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
             geometry.setAttribute('normal',new T.Float32BufferAttribute(normals,3));geometry.deleteAttribute('uv');
             const join=new T.Mesh(geometry,joinMaterial);join.name=name;join.position.y=-.64;hairPivot.add(join);
         };
-        for(const side of [-1,1]){
-            const geometry=keep(new T.PlaneGeometry(1,1,36,80));
-            const p=geometry.getAttribute('position'),uv=geometry.getAttribute('uv');
-            for(let i=0;i<p.count;i++){
-                const theta=Math.PI/2+(uv.getX(i)-.5)*1.12;
-                const y=.78+uv.getY(i)*1.42;
-                const crown=Math.sqrt(Math.max(0,1-Math.max(0,(y-1.25)/.95)**2));
-                p.setXYZ(i,side*.984*crown*Math.sin(theta),y,.854*headDepth*crown*Math.cos(theta));
-            }
-            const original=geometry.index!,indices:number[]=[];
-            for(let i=0;i<original.count;i+=3){
-                const ids=[original.getX(i),original.getX(i+1),original.getX(i+2)];
-                const y=ids.reduce((sum,k)=>sum+p.getY(k),0)/3,z=ids.reduce((sum,k)=>sum+p.getZ(k),0)/3;
-                if(((y-1.045)/.175)**2+(z/(.205*headDepth))**2<1)continue;
-                indices.push(...ids);
-            }
-            geometry.setIndex(indices);finishUnderlay(geometry,`plain-hair-gap-${side}`);
+        for(const side of [-1,1] as const){
+            const geometry=keep(createHairSeam(side,headDepth));
+            finishUnderlay(geometry,`plain-hair-gap-${side}`);
         }
         // A shallow, closed crown sheet sits just under both hair halves. The
         // shared apex removes the old minimum-radius tube and its open top.
@@ -283,39 +312,77 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
         finishUnderlay(crown,'plain-hair-crown');
     }
     const smooth=(a:number,b:number,v:number)=>T.MathUtils.smoothstep(v,a,b);
-    const animate=(time:number,motion:Motion)=>{
+    const animate=(time:number,motion:Motion,posture:Posture='standing',activity?:ActivityPose)=>{
         const cute=motion==='wave-cute',calm=motion==='wave-calm'||motion==='wave';
-        const sleeping=motion==='sleep',angry=motion==='angry';
+        const sleeping=motion==='sleep',angry=motion==='angry',sitting=posture==='seated'||motion==='sit';
+        const floatingLimbs=sitting||!!activity||['wave','wave-cute','wave-calm','angry','dance','water'].includes(motion);
+        const rhythm=motion==='rhythm'&&!sitting?rhythmFrame(activity,time):null;
         const enter=smooth(0,.35,time);
         const beat=time%2.2;
         // Squash -> airborne -> soft landing, with a rest between little hops.
-        const jump=cute?Math.max(0,Math.sin(Math.min(1,Math.max(0,(beat-.18)/.75))*Math.PI))*.24:0;
-        const crouch=cute&&beat<.18?Math.sin(beat/.18*Math.PI)*.045:0;
+        const jump=cute&&!sitting?Math.max(0,Math.sin(Math.min(1,Math.max(0,(beat-.18)/.75))*Math.PI))*.24:0;
+        const crouch=cute&&!sitting&&beat<.18?Math.sin(beat/.18*Math.PI)*.045:0;
         const headTilt=cute?(-.10+Math.sin(time*3)*.035)*enter:sleeping?.055:angry?Math.sin(time*15)*.022:motion==='dance'?Math.sin(time*3)*.055:Math.sin(time*1.8)*.008;
-        body.position.set(sleeping?.94:0,sleeping?.98+Math.sin(time*1.8)*.012:jump-crouch,0);
-        body.rotation.set(0,0,sleeping?Math.PI/2-.10:angry?Math.sin(time*14)*.025:motion==='dance'?Math.sin(time*3)*.045:0);
-        body.scale.set(1,sleeping?1+Math.sin(time*1.8)*.012:1,1);
+        const lying=sleeping&&!sitting;
+        body.position.set(lying?.94:0,lying?.98+Math.sin(time*1.8)*.012:jump-crouch,0);
+        if(rhythm)body.position.fromArray(rhythm.offset);
+        body.rotation.set(0,0,sitting?0:lying?Math.PI/2-.10:angry?Math.sin(time*14)*.025:motion==='dance'?Math.sin(time*3)*.045:0);
+        body.scale.set(1,lying?1+Math.sin(time*1.8)*.012:1,1);
+        const headNod=sitting&&sleeping?.10+Math.sin(time*1.6)*.025:motion==='stream'?.025*Math.sin(time*3):motion==='eat'?.018+.018*Math.sin(time*4):0;
         hairPivot.rotation.z=headTilt;
+        hairPivot.rotation.x=headNod;
         const faceMap=sleeping?asleepMap:cute?cuteMap:awakeMap;if(front.map!==faceMap){front.map=faceMap;front.needsUpdate=true;}
         for(const {mesh,side} of hands){
+            mesh.visible=!floatingLimbs;
             const waving=(cute||calm)&&side>0;
             const swing=Math.sin(time*(cute?7:5));
             mesh.position.set(side*.415,.51,0);
             mesh.rotation.set(0,0,0);
-            if(waving){mesh.rotation.z=(.20+swing*.24)*enter;mesh.position.y+=(cute?.055:.025)*enter;mesh.position.z=.025*enter;}
+            if(sitting){mesh.rotation.x=-.55;mesh.rotation.z=side*.16;mesh.position.set(side*.39,.46,.11);}
+            if(motion==='water'){mesh.rotation.x=-.45;mesh.rotation.z=side*.16;mesh.position.set(side*.30,.53,.26);}
+            if(activity){
+                const target=(rhythm?.hands||activity.hands)[side<0?0:1];
+                if(target){mesh.position.fromArray(target);mesh.rotation.x=-.5;
+                    if(motion==='eat'){mesh.position.fromArray(eatingHand(target,time,side));}
+                    if(motion==='computer'){mesh.position.y+=Math.max(0,Math.sin(time*9+side*1.5))*.032;}
+                    if(motion==='stream'){mesh.position.y+=side>0?.07+.035*Math.sin(time*4):.012*Math.sin(time*5);mesh.rotation.z=side>0?.18*Math.sin(time*4):0;}
+                    if(motion==='race'){const turn=Math.sin(time*1.9)*.15;mesh.position.y+=side*turn;mesh.position.x-=side*(1-Math.cos(turn))*.3;mesh.rotation.z=turn;}
+                    if(motion==='rhythm'&&!rhythm){mesh.position.y+=Math.max(0,Math.sin(time*4.8+side*Math.PI/2))*.016;mesh.position.z-=Math.max(0,Math.cos(time*4.8+side*Math.PI/2))*.045;}
+                }
+            }
+            if(waving){mesh.rotation.z=(.20+swing*.24)*enter;mesh.position.y+=(cute?.055:.025)*enter;mesh.position.z+=.025*enter;}
             else if(angry){mesh.rotation.z=side*(.18+Math.sin(time*13)*.08);mesh.position.y+=.02;}
             else if(motion==='walk'||motion==='dance')mesh.rotation.x=Math.sin(time*4+side)*.16;
+        }
+        for(const {mesh,side,foot} of actionLimbs){
+            mesh.visible=foot?sitting:floatingLimbs;
+            if(foot){mesh.position.set(side*.19,sitting?-.10+.018*Math.sin(time*2.6+side):.055,sitting?.68:.27);mesh.rotation.set(0,0,0);}
+            else{const hand=hands.find(h=>h.side===side)?.mesh;if(hand){mesh.position.copy(hand.position);mesh.rotation.copy(hand.rotation);}
+                // A round hand has no readable rotation: wave its center in a
+                // small arc, without changing its radius or growing an arm.
+                if((cute||calm)&&side>0){
+                    // Lift beside the large head, outside the hair silhouette.
+                    mesh.position.x+=((cute?.98:.92)+Math.sin(time*(cute?7:5))*.08-mesh.position.x)*enter;
+                    mesh.position.y+=((cute?.82:.76)-mesh.position.y)*enter;
+                    mesh.position.z+=(.46-mesh.position.z)*enter;
+                }
+            }
         }
         for(const {geometry,rest,smoothNormals} of deformers){
             const p=geometry.getAttribute('position');
             for(let i=0;i<p.count;i++){
                 const x=rest[i*3],y=rest[i*3+1],z=rest[i*3+2],side=Math.sign(x);
                 let nx=x,ny=y,nz=z;
-                if(motion==='walk')nz+=Math.sin(time*4+side*Math.PI/2)*.055*(1-smooth(.12,.30,y));
-                if(angry&&side<0)ny+=Math.max(0,Math.sin(time*7))*.05*(1-smooth(.12,.30,y));
+                // Tuck only the original tiny toes while the action feet show.
+                // Never curl the rounded lower torso into a pedestal.
+                if(sitting)nz*=1-.6*(1-smooth(.035,.105,y));
+                if(motion==='walk'&&!sitting)nz+=Math.sin(time*4+side*Math.PI/2)*.055*(1-smooth(.12,.30,y));
+                if(angry&&side<0&&!sitting)ny+=Math.max(0,Math.sin(time*7))*.05*(1-smooth(.12,.30,y));
                 const headWeight=smooth(.62,.84,y),ha=headTilt*headWeight;
                 const hx=nx,hy=ny-.64;
                 nx=hx*Math.cos(ha)-hy*Math.sin(ha);ny=.64+hx*Math.sin(ha)+hy*Math.cos(ha);
+                const nod=headNod*headWeight,dy=ny-.64;
+                ny=.64+dy*Math.cos(nod)-nz*Math.sin(nod);nz=dy*Math.sin(nod)+nz*Math.cos(nod);
                 p.setXYZ(i,nx,ny,nz);
             }
             p.needsUpdate=true;smoothNormals();

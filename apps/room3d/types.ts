@@ -1,3 +1,4 @@
-export interface Home3DItem {id:string;assetId:string;x:number;y:number;z:number;rotation:number;color:string|null;stored:boolean;supportId?:string|null}
-export interface Home3DRoom {id:string;name:string;x:number;z:number;level:number;wall:string;trim?:string;floor?:string;items:Home3DItem[]}
-export interface Home3DState {version:1;assetVersion?:number;activeRoomId:string;rooms:Home3DRoom[]}
+export interface Home3DItem {id:string;assetId:string;x:number;y:number;z:number;rotation:number;color:string|null;stored:boolean;supportId?:string|null;dockId?:string|null;dockSlot?:string|null;dockDisabled?:boolean;length?:number}
+export interface Home3DBoundary {kind:'wall_high'|'wall_low'|'wall_fence'|'open';door?:{kind:'door'|'arch'|'sliding';at:number;width:number}}
+export interface Home3DRoom {id:string;name:string;x:number;z:number;level:number;wall:string;trim?:string;floor?:string;floorStyle?:'original'|'wood'|'tile'|'checker'|'solid';wallStyle?:'solid'|'stripe'|'dot'|'panel';boundaries?:Partial<Record<'front'|'back'|'left'|'right',Home3DBoundary>>;items:Home3DItem[]}
+export interface Home3DState {version:1;assetVersion?:number;roomSizeVersion?:number;activeRoomId:string;rooms:Home3DRoom[]}

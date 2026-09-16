@@ -16,7 +16,7 @@ await page.locator('[data-action="category"][data-value="table"]').click();await
 await page.locator('[data-panel="furniture"]').click();await page.locator('[data-action="category"][data-value="tabletop"]').click();await page.locator('[data-action="add-item"][data-id="tea_mug"]').click();
 let room=(await state()).rooms.at(-1),desk=room.items.find(i=>i.assetId==='worktable'),cup=room.items.find(i=>i.assetId==='tea_mug');
 if(cup.supportId!==desk.id)throw Error('Cup unsupported');
-await choose(desk.id);await page.locator('[data-action="rotate"]').click();
+await choose(desk.id);await page.locator('[data-action="rotate"]').click();await page.locator('[data-action="place-rotation"]').click();
 room=(await state()).rooms.at(-1);if(room.items.find(i=>i.id===cup.id).rotation!==90)throw Error('Cup did not follow rotation');
 await page.locator('[data-action="store"]').click();if((await state()).rooms.at(-1).items.some(i=>!i.stored))throw Error('Group not stored');
 await page.locator('[data-panel="expand"]').click();await page.locator('[data-direction="up"]').click();await page.locator('[data-panel="storage"]').click();await page.locator(`[data-action="restore"][data-id="${desk.id}"]`).click();

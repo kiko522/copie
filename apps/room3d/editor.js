@@ -1,8 +1,30 @@
+import {furniturePaintMaterials,validFurnitureColor} from './furniturePaint.js';
+import {furnitureGroup,isDockChair} from './furnitureDock.js';
+import {FLOOR_STYLES,WALL_STYLES} from './finishes.js';
+import {createRoomFinishes} from './finishMeshes.js';
+import {windowDaylightSources} from './windowDaylight.js';
+import {createWindowDaylight} from './windowDaylightLights.js';
+import {isPhoneBrowser,PHONE_BUDGET,furnishingCounts,phoneBudgetError} from './deviceBudget.js';
+import {ROOM_HALF,ROOM_SCALE,MAX_BUILDING_LENGTH} from './dimensions.js';
+import {gamingActivities,placeGamingPreset,GAMING_ACTIONS} from './gaming.js';
+import {diningActivities,placeDiningPreset,fridgeOpenError} from './dining.js';
+import {createKitchenEffects} from './kitchenEffects.js';
+import {createGamingEffects} from './gamingEffects.js';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
-import {findResidentSpot} from './model.js';
+import {previewFurniture} from './model.js';
+import {roomSeats,seatTransform} from './seating.js';
+import {wallFaces,mountOnFace,wallPlacementError} from './wallMount.js';
+import {wateringSpot,roomPlants} from './watering.js';
+import {createWateringEffect} from './wateringEffect.js';
+import {BUILDING_ASSETS,BUILDING_LENGTH,buildingScale,ROOM_EDGES,buildingEdge,placeBuildingOnEdge,snapBuildingToEdge} from './building.js';
+import {createBuildingTemplates} from './buildingMeshes.js';
+import {ROOM_STEP,OPPOSITE,EDGE_NAMES,WALL_VIEWS,DOOR_KINDS,boundary,neighbor,roomOffset,roomBoundarySegments,connectedRooms,roomGroups,displayRooms,wallVisible,setBoundary} from './topology.js';
+import {layoutRoom,moveInHome,layoutError} from './layout.js';
+import {walkingMap,findWalkPath,doorTarget} from './navigation.js';
+import {createDoor} from './doorMeshes.js';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
-import {createHome,validateHome,addRoom,findPlace,placementError,clone,PALETTE,STEP,furnitureType,TYPE_LABELS,snapToSupport,moveFurniture} from './model.js';
+import {createHome,validateHome,addRoom,findPlace,placementError,clone,PALETTE,STEP,furnitureType,TYPE_LABELS,snapToSupport,snapToFurniture,supportSurfaces,moveFurniture} from './model.js';
 
 const esc=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const colors=new Set(['lavender','purple','pink','blush','peri','rug']);
@@ -10,18 +32,22 @@ export async function mountHomeEditor(host,{assetBase,initialState,onChange,onBa
  host.classList.add('home3d');host.innerHTML='<div class="h3-stage"></div><div class="h3-ui"></div><div class="h3-loading">正在把家具搬进来…</div>';
  let suspended=false;
  let destroyed=false,state,catalog,kit,selected=null,panel=null,overview=false,edit=false,message='',error=false,undo=[],redo=[],saved=true;
+ let rotationPreview=null;
+ let wallView='cutaway',boundaryEdge='back',visibleRoomIds=new Set(),detailedRoomIds=new Set(),doors=[],walking=null,visitorLocation=null;
+ try{const v=localStorage.getItem('sully-home3d-wall-view');if(WALL_VIEWS[v])wallView=v;}catch{}
  let objects=[],animated=[],elapsed=0,manual=false,frame=0,drag=null,pointerDown=null,lastTick=performance.now(),lastDraw=0,dirty=true;
  const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
  const touch=matchMedia('(pointer:coarse)').matches;
+ const phone=isPhoneBrowser({userAgent:navigator.userAgent,mobile:navigator.userAgentData?.mobile,coarse:touch,width:screen.width,height:screen.height});
  const qualities={eco:{label:'省电',ratio:.75,fps:30,shadows:false,motion:false,details:1},balanced:{label:'均衡',ratio:1,fps:30,shadows:true,motion:true,details:2},clear:{label:'清晰',ratio:1.5,fps:touch?30:60,shadows:true,motion:true,details:touch?2:4}};
  let quality='eco';try{const saved=localStorage.getItem('sully-home3d-quality');if(qualities[saved])quality=saved}catch{}
  let detailBudget=qualities[quality].details,frameInterval=1000/qualities[quality].fps,orbitMode=false,inTick=false;
  function wake(){if(!destroyed&&!suspended&&!document.hidden&&!frame&&!inTick&&state)frame=requestAnimationFrame(tick)}
- const materialCache=new Map(),usedMaterials=new Set();
+ const materialCache=new Map(),usedMaterials=new Set(),paintTargets=new Map(),defaultPaintColors=new Map();
  let renderedFrames=0,category='all';
  const stage=host.querySelector('.h3-stage'),ui=host.querySelector('.h3-ui');
  const abort=new AbortController();
- const scene=new THREE.Scene();scene.background=new THREE.Color('#e8dde7');
+ const scene=new THREE.Scene();scene.background=new THREE.Color('#e8dde7');const windowDaylight=createWindowDaylight(scene);
  let renderer;
  try{renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});}catch(e){host.querySelector('.h3-loading').textContent='这台设备暂时无法打开 3D 小屋，可返回 2D 小屋。';throw e}
  renderer.setPixelRatio(Math.min(devicePixelRatio,qualities[quality].ratio));renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;
@@ -32,26 +58,88 @@ export async function mountHomeEditor(host,{assetBase,initialState,onChange,onBa
  // Let the view descend to almost eye level, including when focused on a
  // short resident, instead of stopping at the old steep room overview.
  controls.minPolarAngle=.5;controls.maxPolarAngle=Math.PI/2-.015;controls.minZoom=.6;controls.maxZoom=2.8;
- const hemi=new THREE.HemisphereLight('#ece9ff','#c3a1a7',1.8);scene.add(hemi);
- const key=new THREE.DirectionalLight('#fff1df',2.2);key.position.set(-3,8,5);key.castShadow=true;key.shadow.mapSize.set(1024,1024);key.shadow.radius=14;key.shadow.blurSamples=12;key.shadow.normalBias=.035;
- Object.assign(key.shadow.camera,{left:-5,right:5,top:6,bottom:-5,near:.5,far:25});scene.add(key);
- const fill=new THREE.DirectionalLight('#dddfff',1);fill.position.set(5,5,-3);scene.add(fill);
+ // Warm daylight from the open side, with a restrained cool frontal fill.
+ // Keep the resident's no-self-shadow treatment; shape comes from light direction.
+ const hemi=new THREE.HemisphereLight('#fff4e7','#c4bbd0',1.45);scene.add(hemi);
+ const key=new THREE.DirectionalLight('#fff4e6',2.6);key.position.set(-3.8,9.5,7);key.target.position.set(0,.7,0);scene.add(key.target);key.castShadow=true;key.shadow.mapSize.set(1024,1024);key.shadow.radius=9;key.shadow.blurSamples=10;key.shadow.normalBias=.012;key.shadow.bias=-.00008;
+ // The old shadow camera still fitted the smaller room; cover the enlarged
+ // active tile without expanding the map over every neighboring room.
+ Object.assign(key.shadow.camera,{left:-7.6,right:7.6,top:7.6,bottom:-7.6,near:.5,far:30});scene.add(key);
+ const fill=new THREE.DirectionalLight('#e5ebff',.85);fill.position.set(6,5,3);scene.add(fill);
  const ground=new THREE.Mesh(new THREE.PlaneGeometry(160,160),new THREE.ShadowMaterial({color:'#8b779b',opacity:.12}));ground.rotation.x=-Math.PI/2;ground.position.y=-.47;ground.receiveShadow=true;scene.add(ground);
- const content=new THREE.Group();scene.add(content);
+ const content=new THREE.Group();scene.add(content);const finishes=createRoomFinishes();
  const resident=new THREE.Group();scene.add(resident);
- let visitor=null,visitorMotion='idle',visitorStart=0,visitorUntil=0;
+ let visitor=null,visitorMotion='idle',visitorStart=0,visitorUntil=0,visitorSeat=null,visitorPlant=null,visitorActivity=null,headWidth=1.5;
+ const gamingEffects=createGamingEffects(),kitchenEffects=createKitchenEffects(resident);
+ const activities=()=>[...gamingActivities(placementRoom(),catalog,{headWidth}),...diningActivities(placementRoom(),catalog,{headWidth})];
+ const navMap=()=>walkingMap(state,current().level,catalog,{headWidth});
+ function stopWalking(){walking=null;if(visitorMotion==='walk')visitorMotion='idle';}
+ function walkTo(target){
+  if(!visitor||!resident.visible)return false;
+  if(visitorSeat||visitorPlant||visitorActivity){visitorActivity=null;gamingEffects.clear();kitchenEffects.updateMeal(null,0);visitorSeat=null;visitorPlant=null;visitorLocation=null;placeVisitor();}
+  const start=[resident.position.x+current().x*ROOM_STEP.x,resident.position.z+current().z*ROOM_STEP.z],path=findWalkPath(navMap(),start,target);
+  if(!path){notify('这里走不过去，检查门洞宽度和两边的家具，给大脑袋留点空间',true);return false;}
+  edit=false;overview=false;selected=null;panel=null;visitorMotion='walk';visitorStart=elapsed;walking={path,index:1,last:elapsed};
+  visitorLocation={x:start[0],z:start[1],level:current().level};message='出发！';error=false;updateSelection();dirty=true;wake();renderUI();return true;
+ }
+ function updateWalk(){
+  if(!walking)return;let remaining=Math.max(0,elapsed-walking.last)*1.45;walking.last=elapsed;
+  while(walking&&walking.index<walking.path.length){const p=walking.path[walking.index],dx=p[0]-visitorLocation.x,dz=p[1]-visitorLocation.z,length=Math.hypot(dx,dz);
+   if(length>.001)resident.rotation.y=Math.atan2(dx,dz);
+   if(length>remaining){visitorLocation.x+=dx*remaining/length;visitorLocation.z+=dz*remaining/length;break;}
+   visitorLocation.x=p[0];visitorLocation.z=p[1];remaining-=length;walking.index++;
+  }
+  const locationRoom=state.rooms.find(r=>r.level===visitorLocation.level&&Math.abs(visitorLocation.x-r.x*ROOM_STEP.x)<ROOM_HALF.x&&Math.abs(visitorLocation.z-r.z*ROOM_STEP.z)<ROOM_HALF.z);if(locationRoom&&!detailedRoomIds.has(locationRoom.id))rebuild();
+  resident.position.set(visitorLocation.x-current().x*ROOM_STEP.x,.18,visitorLocation.z-current().z*ROOM_STEP.z);
+  if(walking.index>=walking.path.length){stopWalking();visitorUntil=elapsed+.1;message='到啦';renderUI();}
+  dirty=true;renderer.shadowMap.needsUpdate=true;
+ }
+ function updateDoors(){
+  if(!state)return;
+  for(const door of doors){const leaf=door.userData.doorLeaf,p=door.getWorldPosition(new THREE.Vector3()),near=!!visitor&&resident.visible&&Math.hypot(p.x-resident.position.x,p.z-resident.position.z)<2;
+   if(door.userData.doorKind==='door')leaf.rotation.y=near?-Math.PI/2:0;
+   if(door.userData.doorKind==='sliding')leaf.position.x=near?door.userData.doorWidth+.06:0;
+  }
+ }
+ const watering=createWateringEffect();resident.add(watering.root);
  const motions=[['idle','站好'],['wave-cute','可爱挥手'],['wave-calm','冷静挥手'],['sleep','睡觉'],['angry','生气'],['dance','晃一晃']];
+ function animateVisitor(time){
+  updateWalk();updateDoors();
+  if(visitorPlant&&time>=4.4){visitorPlant=null;visitorMotion='idle';renderUI();}
+  if(visitorActivity&&time>=12){message=visitorActivity.kind==='eat'?'吃好啦，坐着歇一会儿':'这一局结束啦';visitorActivity=null;visitorMotion='idle';visitorUntil=0;renderUI();}
+  visitor?.animate(reducedMotion&&visitorMotion==='rhythm'?0:time,visitorMotion,visitorSeat?'seated':'standing',visitorActivity);
+  gamingEffects.update(objects,visitorActivity,time);kitchenEffects.updateMeal(visitorActivity,time);
+  watering.update(time,visitorPlant?.spot);
+ }
  function placeVisitor(){
   resident.visible=!!visitor&&!overview;
   if(!visitor||!state)return;
+  const focusItem=visitorActivity?.itemId||visitorSeat?.itemId||visitorPlant?.itemId,focusRoom=focusItem&&state.rooms.find(r=>r.items.some(i=>i.id===focusItem));
+  if(!overview&&focusRoom&&focusRoom.level===current().level&&!detailedRoomIds.has(focusRoom.id)){rebuild();return;}
+
+  if(visitorActivity){const next=activities().find(a=>a.itemId===visitorActivity.itemId&&a.kind===visitorActivity.kind&&a.stationId===visitorActivity.stationId&&!a.reason&&a.roomId===visitorActivity.roomId);if(next){visitorActivity=next;visitorSeat=next.seat;resident.position.fromArray(next.position);resident.rotation.y=next.rotation;kitchenEffects.updateMeal(next,reducedMotion?1:elapsed-visitorStart);return;}visitorActivity=null;gamingEffects.clear();kitchenEffects.updateMeal(null,0);visitorMotion='idle';visitor.animate(0,'idle',visitorSeat?'seated':'standing');}
+  if(visitorLocation&&visitorLocation.level===current().level&&!visitorSeat&&!visitorPlant){const map=navMap(),{x,z}=visitorLocation;if(map.free(x,z)&&map.areas.some(a=>visibleRoomIds.has(a.roomId)&&x>=a.rect[0]&&x<=a.rect[2]&&z>=a.rect[1]&&z<=a.rect[3])){resident.position.set(x-current().x*ROOM_STEP.x,.18,z-current().z*ROOM_STEP.z);return;}}
+  visitorLocation=null;
+  if(visitorPlant){
+   const spot=visitorPlant.roomId===current().id?wateringSpot(current(),catalog,visitorPlant.itemId):null;
+   if(spot){visitorPlant.spot=spot;resident.position.fromArray(spot.position);resident.rotation.y=spot.rotation;watering.update(elapsed-visitorStart,spot);return;}
+   visitorPlant=null;visitorMotion='idle';visitor.animate(0,'idle');
+  }
+  watering.root.visible=false;
+  const seat=seatTransform(placementRoom(),catalog,visitorSeat);
+  if(seat){resident.position.fromArray(seat.position);resident.position.y-=visitor.seatOffset??0;resident.rotation.y=seat.rotation;return;}
+  if(visitorSeat){visitorSeat=null;visitorMotion='idle';visitor.animate(0,'idle');}
+  resident.rotation.y=0;
   // Reserve the entire head footprint, and prefer open floor near the viewer.
-  const spot=findResidentSpot(current(),catalog);
+  const map=navMap(),r=current();let spot=null;
+  for(let z=ROOM_HALF.z-.85;z>=-ROOM_HALF.z+.85&&!spot;z-=.2)for(const x of Array.from({length:Math.ceil((ROOM_HALF.x-.85)/.4)*2-1},(_,k)=>k===0?0:Math.ceil(k/2)*.4*(k%2?1:-1)))if(map.free(x+r.x*ROOM_STEP.x,z+r.z*ROOM_STEP.z)){spot=[x,.18,z];break;}
   if(spot)resident.position.fromArray(spot);
   resident.visible=!!spot&&!overview;
  }
  function setVisitor(next){
-  visitor?.dispose();visitor=next;resident.clear();visitorMotion='idle';visitorStart=elapsed;visitorUntil=0;
-  if(visitor){resident.add(visitor.root);visitor.animate(0,'idle');}
+  walking=null;visitorLocation=null;visitorActivity=null;gamingEffects.clear();kitchenEffects.updateMeal(null,0);
+  visitor?.dispose();visitor=next;resident.clear();resident.add(watering.root,kitchenEffects.meal);visitorPlant=null;visitorSeat=null;visitorMotion='idle';visitorStart=elapsed;visitorUntil=0;
+  if(visitor){resident.add(visitor.root);visitor.animate(0,'idle');visitor.root.updateWorldMatrix(true,true);const bounds=new THREE.Box3();visitor.root.traverse(o=>{if(o.isMesh&&o.name==='chibi-body')bounds.union(new THREE.Box3().setFromObject(o));});headWidth=bounds.isEmpty()?1.5:Math.max(1.5,bounds.getSize(new THREE.Vector3()).x+.08);}
   if(state){placeVisitor();dirty=true;wake();renderUI();}
  }
  const selection=new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(Array.from({length:4},()=>new THREE.Vector3())),new THREE.LineBasicMaterial({color:0x9d80bd,transparent:true,opacity:.6,depthTest:false}));
@@ -68,7 +156,7 @@ export async function mountHomeEditor(host,{assetBase,initialState,onChange,onBa
   for(const material of outlineMaterials){const copy=obj.clone(true);copy.position.set(0,0,0);copy.rotation.set(0,0,0);copy.scale.set(1,1,1);copy.traverse(o=>{if(o.isMesh){o.material=material;o.castShadow=false;o.receiveShadow=false;o.raycast=()=>{};o.renderOrder=2}});outlineGroup.add(copy)}
   obj.add(outlineGroup);outlinedObject=obj;
  }
- const grid=new THREE.Mesh(new THREE.PlaneGeometry(6,5.1),new THREE.ShaderMaterial({transparent:true,depthWrite:false,uniforms:{tint:{value:new THREE.Color('#b3a0ce')}},vertexShader:'varying vec2 vUv; void main(){vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',fragmentShader:'varying vec2 vUv; uniform vec3 tint; void main(){vec2 p=(vUv-.5)*vec2(6.,5.1)/.4; vec2 d=abs(fract(p-.5)-.5)/max(fwidth(p),vec2(.001));float line=1.-min(min(d.x,d.y),1.);vec2 q=p*2.;vec2 e=abs(fract(q-.5)-.5)/max(fwidth(q),vec2(.001));float minor=1.-min(min(e.x,e.y),1.);gl_FragColor=vec4(tint,max(line*.34,minor*.09));}' }));grid.rotation.x=-Math.PI/2;grid.position.y=.166;grid.visible=false;grid.renderOrder=3;scene.add(grid);
+ const grid=new THREE.Mesh(new THREE.PlaneGeometry(ROOM_STEP.x-.2,ROOM_STEP.z-.2),new THREE.ShaderMaterial({transparent:true,depthWrite:false,uniforms:{tint:{value:new THREE.Color('#b3a0ce')}},vertexShader:'varying vec2 vUv; void main(){vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',fragmentShader:'varying vec2 vUv; uniform vec3 tint; void main(){vec2 p=(vUv-.5)*vec2(9.1,7.75)/.4; vec2 d=abs(fract(p-.5)-.5)/max(fwidth(p),vec2(.001));float line=1.-min(min(d.x,d.y),1.);vec2 q=p*2.;vec2 e=abs(fract(q-.5)-.5)/max(fwidth(q),vec2(.001));float minor=1.-min(min(e.x,e.y),1.);gl_FragColor=vec4(tint,max(line*.34,minor*.09));}' }));grid.rotation.x=-Math.PI/2;grid.position.y=.166;grid.visible=false;grid.renderOrder=3;scene.add(grid);
  const footprint=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({color:'#8ccea2',transparent:true,opacity:.23,depthWrite:false,depthTest:false}));footprint.rotation.x=-Math.PI/2;footprint.visible=false;footprint.renderOrder=4;scene.add(footprint);
  function placementGuide(obj,valid=true){
   const active=!!drag&&edit&&!overview,kind=item()?asset(item().assetId).surface:'';
@@ -82,165 +170,288 @@ export async function mountHomeEditor(host,{assetBase,initialState,onChange,onBa
   let material=distantMaterials.get(color);
   if(!material){material=new THREE.MeshStandardMaterial({color,roughness:.85});distantMaterials.set(color,material)}
   const root=new THREE.Group();
-  for(const [x,y,z,w,h,d] of [[0,-.15,0,6.3,.35,5.4],[0,2.3,-2.6,6.3,4.6,.2],[-3.05,2.3,0,.2,4.6,5.4],[3.05,.5,-1.8,.2,1,1.6]]){
+  for(const [x,y,z,w,h,d] of [[0,-.04,0,ROOM_STEP.x,.38,ROOM_STEP.z]]){
    const mesh=new THREE.Mesh(distantGeometry,material);mesh.position.set(x,y,z);mesh.scale.set(w,h,d);root.add(mesh);
   }
   return root;
  }
  let size={w:1,h:1};
  const current=()=>state.rooms.find(r=>r.id===state.activeRoomId);
- const item=()=>current()?.items.find(i=>i.id===selected);
- const asset=id=>catalog.find(a=>a.id===id);
+ function activateRoom(room){
+  if(!room||room.id===state.activeRoomId)return;
+  if(!overview&&room.level===current().level){const [x,z]=roomOffset(room,current());camera.position.x-=x;camera.position.z-=z;controls.target.x-=x;controls.target.z-=z;controls.update();}
+  state.activeRoomId=room.id;
+ }
+ const selectedOwner=()=>state.rooms.find(r=>r.items.some(i=>i.id===selected));
+ const item=()=>{const owner=selectedOwner(),i=owner?.items.find(i=>i.id===selected);if(!i)return;const [x,z]=roomOffset(owner,current()),result={...i,x:i.x+x,z:i.z+z};return rotationPreview?.id===i.id?{...result,...rotationPreview}:result;};
+ const placementRoom=()=>layoutRoom(state,current(),catalog);
+ function objectPose(obj,i){const room=state.rooms.find(r=>r.id===obj.userData.roomId),[x,z]=roomOffset(room,current());obj.position.set(i.x-x,i.y,i.z-z);obj.rotation.y=i.rotation*Math.PI/180;}
+ const assetIndex=new Map();const asset=id=>assetIndex.get(id);
  function notify(text,bad=false){message=text;error=bad;renderUI()}
  function persist(){
   saved=true;
   try{if(storageKey)localStorage.setItem(storageKey,JSON.stringify(state));const result=onChange?.(clone(state));if(result?.catch)result.catch(()=>{saved=false;notify('保存失败，当前布置仍保留在画面中，可导出备份',true)});}catch{saved=false;message='保存失败，请导出备份';error=true}
  }
  function commit(mutator){
-  const before=clone(state);message='';error=false;
-  try{mutator();undo.push(before);if(undo.length>40)undo.shift();redo=[];persist();rebuild();renderUI();}catch(e){state=before;notify(e.message,true)}
+  const before=clone(state),selectionBefore=selected,panelBefore=panel,rotationBefore=rotationPreview;stopWalking();message='';error=false;
+  try{mutator();const budgetError=phone&&phoneBudgetError(before,state,catalog);if(budgetError)throw Error(budgetError);let unmounted=0;for(const r of state.rooms)for(const i of r.items){const a=asset(i.assetId);if(a?.surface==='wall'&&!i.stored&&wallPlacementError(i,a,r,catalog)){i.stored=true;unmounted++;}}if(unmounted)message='墙面变化，失去承托的窗户已收纳，可撤销';undo.push(before);if(undo.length>40)undo.shift();redo=[];persist();rebuild();renderUI();return true;}catch(e){state=before;selected=selectionBefore;panel=panelBefore;rotationPreview=rotationBefore;rebuild();notify(e.message,true);return false;}
  }
  function applyColor(root,color,wall=false,id=''){
   root.traverse(o=>{if(!o.isMesh)return;const mats=Array.isArray(o.material)?o.material:[o.material];
    o.castShadow=mats.every(m=>!m.transparent);o.receiveShadow=true;
    o.material=mats.map(m=>{
-    const primary=['table','chair','desk','bookcase','tank'].includes(id)?['woodLight','cream']:['plant','small_plant','trailing_plant'].includes(id)?['cream','lavender']:[];
-    const paint=wall?((m.name==='cream'&&o.userData.wallPart!=='floor')?color.wall:colors.has(m.name)?color.trim:color.floor&&['wood','woodLight','cream'].includes(m.name)&&o.userData.wallPart==='floor'?color.floor:''):color&&(colors.has(m.name)||primary.includes(m.name))?color:'';
+    const primary=paintTargets.get(id)||[];
+    const paint=wall?((m.name==='cream'&&o.userData.wallPart!=='floor')?color.wall:colors.has(m.name)?color.trim:color.floor&&['wood','woodLight','cream'].includes(m.name)&&o.userData.wallPart==='floor'?color.floor:''):color&&primary.includes(m.name)?color:'';
     const key=m.uuid+'/'+paint;usedMaterials.add(key);let c=materialCache.get(key);
-    if(!c){c=m.clone();if(paint)c.color.set(paint);if(c.transparent)c.depthWrite=false;materialCache.set(key,c)}
+    if(!c){c=m.clone();if(paint)c.color.set(paint);if(id==='wooden_window'&&m.name==='window-blue'){c.emissive.set('#fff1ce');c.emissiveIntensity=.20;}if(c.transparent)c.depthWrite=false;materialCache.set(key,c)}
     return c});if(o.material.length===1)o.material=o.material[0];
   });
  }
- function instance(id,color,wall){const template=templates.get(id);if(!template)throw Error('缺少家具模型：'+id);const obj=template.clone(true);applyColor(obj,color,wall,id);return obj}
- function clearContent(){clearOutline();content.traverse(o=>{if(o.isMesh){if(o.geometry.userData.owned)o.geometry.dispose();for(const m of Array.isArray(o.material)?o.material:[o.material])if(m.userData.owned)m.dispose()}});content.clear();objects=[];animated=[]}
+ function instance(id,color,wall){const template=templates.get(id);if(!template)throw Error('缺少家具模型：'+id);const obj=template.clone(true);applyColor(obj,color,wall,id);obj.traverse(o=>{if(o.isMesh&&o!==obj&&!o.userData.animated&&!o.userData.gamingRole){o.updateMatrix();o.matrixAutoUpdate=false;}});return obj}
+ function clearContent(){gamingEffects.clear();kitchenEffects.clear();clearOutline();content.traverse(o=>{if(o.isMesh){if(o.geometry.userData.owned)o.geometry.dispose();for(const m of Array.isArray(o.material)?o.material:[o.material])if(m.userData.owned)m.dispose()}});content.clear();objects=[];animated=[]}
  let lastViewKey='';
  function rebuild(){
+  finishes.begin();
+  const shadowSize=quality==='clear'&&!touch?2048:1024;
+  key.shadow.radius=9*shadowSize/1024;
+  if(key.shadow.mapSize.x!==shadowSize){key.shadow.map?.dispose();key.shadow.mapPass?.dispose();key.shadow.map=null;key.shadow.mapPass=null;key.shadow.mapSize.set(shadowSize,shadowSize);}
   clearContent();usedMaterials.clear();dirty=true;key.castShadow=!overview&&qualities[quality].shadows;renderer.shadowMap.enabled=key.castShadow;renderer.shadowMap.needsUpdate=true;const active=current();
-  const detailed=new Set([...state.rooms].sort((a,b)=>(Math.abs(a.x-active.x)+Math.abs(a.z-active.z)+Math.abs(a.level-active.level))-(Math.abs(b.x-active.x)+Math.abs(b.z-active.z)+Math.abs(b.level-active.level))).slice(0,detailBudget).map(r=>r.id));
-  for(const r of state.rooms){
-   if(!overview&&r.id!==active.id)continue;
+  const visible=overview?state.rooms:displayRooms(state,active);visibleRoomIds=new Set(visible.map(r=>r.id));doors=[];
+  const detailed=new Set((overview?visible.slice(0,detailBudget):[...visible.filter(r=>r.id===active.id||r.items.some(i=>[visitorActivity?.itemId,visitorSeat?.itemId,visitorPlant?.itemId].includes(i.id))||visitorLocation&&r.level===visitorLocation.level&&Math.abs(visitorLocation.x-r.x*ROOM_STEP.x)<ROOM_HALF.x&&Math.abs(visitorLocation.z-r.z*ROOM_STEP.z)<ROOM_HALF.z),...visible.slice(0,Math.max(phone?1:3,detailBudget))]).map(r=>r.id));detailedRoomIds=detailed;
+  for(const r of visible){
    const room=new THREE.Group();room.userData.roomId=r.id;
-   if(overview)room.position.set((r.x-active.x)*6.48,(r.level)*5.08,(r.z-active.z)*5.6);
-   const shell=overview&&!detailed.has(r.id)?distantShell(r.trim||r.wall):instance('shell',{wall:r.wall,trim:r.trim||'',floor:r.floor||''},true);shell.userData.roomId=r.id;room.add(shell);
-   // Keep the room cutaway readable. The overview shows the actual stacked shells;
-   // focusing a room removes upper-floor occlusion without deleting any furniture.
-   for(const i of r.items){if(i.stored||overview&&!detailed.has(r.id))continue;const obj=instance(i.assetId,i.color,false);obj.position.set(i.x,i.y,i.z);obj.rotation.y=i.rotation*Math.PI/180;obj.userData.itemId=i.id;obj.userData.roomId=r.id;room.add(obj);objects.push(obj);
-    obj.traverse(o=>{if(o.userData.animated) animated.push({o,y:o.position.y,phase:o.userData.phase||0,speed:o.userData.floatSpeed||.6,amplitude:o.userData.floatAmplitude||.02});});
+   const [dx,dz]=roomOffset(r,active);room.position.set(dx,overview?(r.level-active.level)*5.08:0,dz);
+   const shell=detailed.has(r.id)?instance('shell',{wall:r.wall,trim:r.trim||'',floor:r.floor||''},true):distantShell(r.floor||'#dfc7ad');shell.userData.roomId=r.id;if(detailed.has(r.id))shell.scale.set(ROOM_SCALE,1,ROOM_SCALE);room.add(shell);
+   shell.traverse(o=>{if(o.userData.wallPart&&o.userData.wallPart!=='floor')o.visible=false;if(r.floorStyle&&r.floorStyle!=='original'&&o.isMesh&&o.userData.wallPart==='floor'&&(Array.isArray(o.material)?o.material:[o.material]).some(m=>m.name==='woodLight'))o.visible=false;});
+   for(const [edge,e] of Object.entries(ROOM_EDGES)){
+    const other=neighbor(state,r,edge),internal=!!other;
+    if(other&&visibleRoomIds.has(other.id)&&r.id>other.id)continue;
+    let segments=roomBoundarySegments(r,edge,catalog);
+    if(other)for(const extra of roomBoundarySegments(other,OPPOSITE[edge],catalog).filter(s=>s.itemId)){
+     segments=segments.flatMap(s=>s.hi<=extra.lo||s.lo>=extra.hi?[s]:[{...s,hi:Math.min(s.hi,extra.lo)},{...s,lo:Math.max(s.lo,extra.hi)}].filter(s=>s.hi>s.lo));segments.push(extra);
+    }
+    for(const segment of segments.filter(s=>!s.itemId)){
+     const replacement=instance(segment.kind,{wall:r.wall,trim:r.trim||'',floor:''},true);
+     replacement.position.set(e.axis==='x'?e.at:(segment.lo+segment.hi)/2,.15,e.axis==='z'?e.at:(segment.lo+segment.hi)/2);replacement.rotation.y=e.rotation*Math.PI/180;replacement.scale.x=(segment.hi-segment.lo)/BUILDING_LENGTH;
+     if(segment.itemId){replacement.userData.itemId=segment.itemId;objects.push(replacement);}replacement.userData.roomId=r.id;replacement.userData.boundaryEdge=edge;replacement.visible=wallVisible(wallView,edge,internal);room.add(replacement);
+    }
+    const d=boundary(r,edge).door;
+    if(d){
+     const doorway=createDoor(d,r.wall,r.trim,boundary(r,edge).kind==='wall_high');doorway.position.set(e.axis==='x'?e.at:d.at,.15,e.axis==='z'?e.at:d.at);doorway.rotation.y=e.rotation*Math.PI/180;doorway.userData.roomId=r.id;doorway.userData.boundaryEdge=edge;doorway.visible=wallVisible(wallView,edge,internal);room.add(doorway);doors.push(doorway);
+     if(boundary(r,edge).kind==='wall_high'&&d.kind!=='arch'){
+      const header=instance('wall_high',{wall:r.wall,trim:r.trim||'',floor:''},true);header.position.copy(doorway.position);header.position.y=2.5;header.rotation.copy(doorway.rotation);header.scale.set(d.width/BUILDING_LENGTH,2.3/4.65,1);header.userData.roomId=r.id;header.userData.boundaryEdge=edge;header.visible=doorway.visible;room.add(header);
+     }
+     if(!other){
+      const apron=new THREE.Mesh(new THREE.BoxGeometry(e.axis==='z'?d.width+.7:2.2,.12,e.axis==='z'?2.2:d.width+.7),new THREE.MeshStandardMaterial({color:r.floor||'#dfc7ad',roughness:1}));apron.geometry.userData.owned=true;apron.material.userData.owned=true;apron.position.copy(doorway.position);apron.position[e.axis]+=Math.sign(e.at)*1.1;apron.position.y=.09;apron.userData.roomId=r.id;room.add(apron);
+     }
+    }
    }
-   content.add(room);
-  }
-  if(overview){
-   // Small cream connectors distinguish adjacency from disconnected thumbnails.
-   for(const r of state.rooms)for(const d of [[1,0],[0,1]]){
-    if(!state.rooms.some(n=>n.level===r.level&&n.x===r.x+d[0]&&n.z===r.z+d[1]))continue;
-    const b=new THREE.Mesh(new THREE.BoxGeometry(d[0]?.34:.7,.1,d[1]?.34:.7),new THREE.MeshStandardMaterial({color:'#fff0da',roughness:.8}));
-    b.material.userData.owned=true;b.geometry.userData.owned=true;b.userData.connector=true;b.position.set((r.x-active.x)*6.48+d[0]*3.24,r.level*5.08+.05,(r.z-active.z)*5.6+d[1]*2.8);content.add(b);
+   if(detailed.has(r.id))for(const i of r.items){if(i.stored)continue;const a=asset(i.assetId),edge=buildingEdge(i);
+    // Edge segments are rendered once as part of the shared physical boundary.
+
+    const obj=instance(i.assetId,i.color,false);obj.position.set(i.x,i.y,i.z);obj.rotation.y=i.rotation*Math.PI/180;if(a.building)obj.scale.x=buildingScale(i);obj.userData.itemId=i.id;obj.userData.roomId=r.id;
+    if(a.building)obj.visible=edge?wallVisible(wallView,edge,!!neighbor(state,r,edge)):wallView!=='hidden';
+    if(['wall','back','left'].includes(a.surface)){const side=Math.abs(i.x)>ROOM_HALF.x-.7?(i.x>0?'right':'left'):Math.abs(i.z)>ROOM_HALF.z-.65?(i.z>0?'front':'back'):null;obj.visible=side?wallVisible(wallView,side,!!neighbor(state,r,side)):wallView!=='hidden';}
+    room.add(obj);objects.push(obj);
+    obj.traverse(o=>{if(o.userData.animated)animated.push({o,y:o.position.y,phase:o.userData.phase||0,speed:o.userData.floatSpeed||.6,amplitude:o.userData.floatAmplitude||.02});});
    }
+   room.add(finishes.add(r,state,catalog,wallView));content.add(room);
   }
-  for(const [key,m] of materialCache)if(!usedMaterials.has(key)){m.dispose();materialCache.delete(key)}
-  placeVisitor();
-  const viewKey=overview+'-'+state.activeRoomId+'-'+state.rooms.length;resize(viewKey!==lastViewKey);lastViewKey=viewKey;updateSelection();
+  windowDaylight.update(windowDaylightSources(state,active,catalog,detailed),{quality,touch,overview});
+  finishes.end();for(const [key,m] of materialCache)if(!usedMaterials.has(key)){m.dispose();materialCache.delete(key)}
+  showRotationPreview();placeVisitor();updateDoors();
+  const viewKey=overview+'-'+active.level+'-'+visible.map(r=>r.id).sort().join();resize(viewKey!==lastViewKey);lastViewKey=viewKey;updateSelection();
+ }
+ function showRotationPreview(){
+  if(!rotationPreview)return;const preview=previewFurniture(placementRoom(),rotationPreview.id,rotationPreview);
+  for(const i of furnitureGroup(preview,rotationPreview.id)){const obj=objects.find(o=>o.userData.itemId===i.id);if(obj){objectPose(obj,i);}}
+ }
+ function cancelRotation(){rotationPreview=null;drag=null;pointerDown=null;controls.enableRotate=true;message='';error=false;rebuild();renderUI();}
+ function rotateItem(){
+  const chosen=item();if(chosen?.dockId){select(chosen.dockId);}
+  const i=item();if(!i||['left','back','wall'].includes(asset(i.assetId).surface))return;
+  rotationPreview={id:i.id,rotation:(i.rotation+90)%360};message='转好后拖动放下，或点「放下」';error=false;
+  const original=selectedOwner().items.find(v=>v.id===i.id);if(rotationPreview.rotation===original.rotation)rotationPreview=null;
+  rebuild();renderUI();host.focus({preventScroll:true});
  }
  function updateSelection(){dirty=true;wake();const obj=objects.find(o=>o.userData.itemId===selected);selection.visible=!!obj&&edit&&!overview;outlineObject(selection.visible?obj:null);if(obj)selection.setFromObject(obj);placementGuide(obj)}
  function resize(fit=false){
   dirty=true;wake();size={w:stage.clientWidth||1,h:stage.clientHeight||1};const ratio=size.w/size.h;
   const box=new THREE.Box3().setFromObject(content),extent=box.isEmpty()?new THREE.Vector3(6.4,4.9,5.5):box.getSize(new THREE.Vector3());
-  let span=overview?Math.max(extent.x*.9+extent.z*.7,extent.y*1.25+extent.z*.5)+2:10.1;
+  const multi=overview||visibleRoomIds.size>1;
+  let span=multi?Math.max(extent.x*.9+extent.z*.7,extent.y*1.25+extent.z*.5)+2:14.4;
   const height=Math.max(span,span/ratio);camera.left=-height*ratio/2;camera.right=height*ratio/2;camera.top=height/2;camera.bottom=-height/2;
   camera.setViewOffset(size.w,size.h,0,Math.round(size.h*.045),size.w,size.h);
-  if(fit){const center=overview?box.getCenter(new THREE.Vector3()):new THREE.Vector3(0,2,0);controls.target.copy(center);camera.position.copy(center).add(new THREE.Vector3(9,8,12).multiplyScalar(overview?Math.max(1,extent.length()/12):1));camera.far=Math.max(200,extent.length()*4+50);camera.zoom=1;}
+  if(fit){const center=multi?box.getCenter(new THREE.Vector3()):new THREE.Vector3(0,2,0);controls.target.copy(center);camera.position.copy(center).add(new THREE.Vector3(9,8,12).multiplyScalar(multi?Math.max(1,extent.length()/12):1));camera.far=Math.max(200,extent.length()*4+50);camera.zoom=1;}
   camera.updateProjectionMatrix();renderer.setSize(size.w,size.h);controls.update();
  }
  function selectedPanel(){
   const i=item();if(!i||i.stored)return '';const a=asset(i.assetId);
-  return `<div class="h3-object-title"><strong>${esc(a.name)}</strong><button data-action="deselect" aria-label="取消选中">×</button></div><div class="h3-object-actions"><button data-action="rotate" ${['left','back'].includes(a.surface)?'disabled':''}>↻ 旋转</button><button data-action="palette">◉ 换色</button><button data-action="copy">＋ 复制</button><button data-action="store">▱ 收纳</button>${['left','back','ceiling'].includes(a.surface)?'<button data-action="height" data-dy=".2">↑</button><button data-action="height" data-dy="-.2">↓</button>':''}</div>${panel==='palette'?`<div class="h3-swatches">${PALETTE.map(c=>`<button aria-label="换色 ${c}" style="background:${c}" data-action="color" data-value="${c}"></button>`).join('')}<button data-action="color" data-value="">原色</button></div>`:''}`;
+  const dockInfo=`${isDockChair(a)?`<div class="h3-object-actions"><span>${i.dockId?'已吸附 · 拖开椅子可分离':i.dockDisabled?'自动吸附已关闭':'靠近桌子自动吸附'}</span><button data-action="toggle-dock">${i.dockDisabled?'开启吸附':'关闭吸附'}</button></div>`:furnitureGroup(selectedOwner(),i.id).some(n=>n.dockId===i.id)?'<div class="h3-object-actions">桌椅组合 · 移动、转向会一起跟随</div>':''}`;
+  const placement=rotationPreview?'<div class="h3-object-actions"><button data-action="place-rotation">✓ 放下</button><button data-action="cancel-rotation">取消旋转</button></div>':'';
+  const edgeControls=`<div class="h3-building-types" aria-label="墙段位置">${[['front','前沿'],['back','后沿'],['left','左沿'],['right','右沿'],['inside','室内']].map(([key,label])=>`<button data-action="building-edge" data-value="${key}" aria-pressed="${(buildingEdge(i)||'inside')===key}">${label}</button>`).join('')}</div>`;
+  if(a.building)return `${placement}${dockInfo}<div class="h3-object-title"><strong>${esc(a.name)} · ${(i.length??BUILDING_LENGTH).toFixed(1)} 格</strong><button data-action="deselect" aria-label="取消选中">×</button></div><div class="h3-building-types">${BUILDING_ASSETS.map(v=>`<button data-action="building-type" data-id="${v.id}" aria-pressed="${i.assetId===v.id}">${v.name}</button>`).join('')}</div>${edgeControls}<div class="h3-object-actions"><button data-action="building-length" data-delta="-.2" ${(i.length??BUILDING_LENGTH)<=.4?'disabled':''}>缩短</button><button data-action="building-length" data-delta=".2" ${(i.length??BUILDING_LENGTH)>=MAX_BUILDING_LENGTH?'disabled':''}>加长</button><button data-action="rotate">↻ 旋转</button><button data-action="copy">＋ 复制</button><button data-action="remove-building">拆除</button></div>`;
+  return `${placement}${dockInfo}<div class="h3-object-title"><strong>${esc(a.name)}</strong><button data-action="deselect" aria-label="取消选中">×</button></div><div class="h3-object-actions"><button data-action="rotate" ${['left','back','wall'].includes(a.surface)?'disabled':''}>↻ 旋转</button><button data-action="palette">◉ 换色</button><button data-action="copy">＋ 复制</button><button data-action="store">▱ 收纳</button>${a.appliance==='fridge'?'<button data-action="fridge-toggle">'+(kitchenEffects.isOpen(i.id)?'关上冰箱':'打开冰箱')+'</button>':''}${['left','back','wall','ceiling'].includes(a.surface)?'<button data-action="height" data-dy=".2">↑</button><button data-action="height" data-dy="-.2">↓</button>':''}</div>${panel==='palette'?`<div class="h3-swatches">${PALETTE.map(c=>`<button aria-label="换色 ${c}" aria-pressed="${i.color?.toLowerCase()===c.toLowerCase()}" style="background:${c}" data-action="color" data-value="${c}"></button>`).join('')}<button class="reset" data-action="color" data-value="">原色</button></div><label class="h3-custom-color">自选主体颜色<input aria-label="自选家具颜色" type="color" data-furniture-color value="${esc(i.color||defaultPaintColors.get(a.id)||PALETTE[0])}"></label>`:''}`;
  }
+ function boundaryPanel(doorsOnly=false){
+  const r=current(),v=boundary(r,boundaryEdge),other=neighbor(state,r,boundaryEdge),d=v.door;
+  return `<div class="h3-categories" aria-label="选择要改造的房间">${displayRooms(state,r).map(n=>`<button data-action="building-room" data-id="${n.id}" aria-pressed="${n.id===r.id}">${esc(n.name)}</button>`).join('')}</div><div class="h3-building-types" aria-label="房间边界">${Object.entries(EDGE_NAMES).map(([id,label])=>`<button data-action="boundary-edge" data-value="${id}" aria-pressed="${id===boundaryEdge}">${label}</button>`).join('')}</div><p>${other?`与「${esc(other.name)}」之间的隔墙`:'小屋外围'} · ${v.kind==='open'?'已拆除':v.kind==='wall_high'?'高墙':v.kind==='wall_low'?'矮墙':'栅栏'}${d?' · '+DOOR_KINDS[d.kind]:''}</p>
+  ${doorsOnly?'':`<div class="h3-actions">${[['wall_high','高墙'],['wall_low','矮墙'],['wall_fence','栅栏'],['open',other?'敲掉隔墙':'拆掉这侧']].map(([id,label])=>`<button data-action="boundary-kind" data-value="${id}" aria-pressed="${v.kind===id}">${label}</button>`).join('')}</div><p>完整隔墙分开房间；拆掉后，两边连成一个可布置的空间。</p>`}
+  <div class="h3-actions">${Object.entries(DOOR_KINDS).map(([id,label])=>`<button data-action="boundary-door" data-value="${id}" aria-pressed="${d?.kind===id}">${label}</button>`).join('')}</div>
+  ${d?`<p>门洞 ${d.width.toFixed(1)} 格宽 · 至少容得下小人的头</p><div class="h3-actions"><button data-action="door-width" data-delta="-.2">窄一点</button><button data-action="door-width" data-delta=".2">宽一点</button><button data-action="door-offset" data-delta="-.2">沿墙 −</button><button data-action="door-offset" data-delta=".2">沿墙 ＋</button><button data-action="remove-door">拆门补墙</button></div>`:'<p>选择门款即可装到这侧中央；没有墙时会一起立上高墙。</p>'}`;
+ }
+ function editBoundary(value){commit(()=>{setBoundary(state,current().id,boundaryEdge,value,catalog);const why=layoutError(state,catalog);if(why)throw Error('先挪开隔墙附近的家具：'+why);stopWalking();message=value.kind==='open'?'隔墙已拆除，两边连在一起啦':'墙面已更新';});}
+ function doorLinks(){const x=resident.position.x+current().x*ROOM_STEP.x,z=resident.position.z+current().z*ROOM_STEP.z,local=state.rooms.find(r=>visibleRoomIds.has(r.id)&&Math.abs(x-r.x*ROOM_STEP.x)<ROOM_HALF.x&&Math.abs(z-r.z*ROOM_STEP.z)<ROOM_HALF.z);return (local?[local.id]:[...visibleRoomIds]).flatMap(id=>{const r=state.rooms.find(v=>v.id===id);return Object.keys(EDGE_NAMES).filter(edge=>boundary(r,edge).door).map(edge=>{const e=ROOM_EDGES[edge],at=(e.axis==='x'?resident.position.x+current().x*ROOM_STEP.x-r.x*ROOM_STEP.x:resident.position.z+current().z*ROOM_STEP.z-r.z*ROOM_STEP.z),outside=Math.sign(e.at)*(at-e.at)>0,other=neighbor(state,r,edge);return `<button data-action="chibi-door" data-room="${r.id}" data-edge="${edge}" data-inside="${outside}">${esc(r.name)} · ${EDGE_NAMES[edge]}${other?(outside?'回来':'去 '+esc(other.name)):(outside?'进门':'出门')}</button>`;});}).join('');}
  function renderUI(){if(!state)return;
   const r=current(),levels=[...new Set(state.rooms.map(r=>r.level))].sort((a,b)=>b-a);
   let sheet='';
-  if(panel==='furniture'||panel==='storage'){
-   const list=panel==='storage'?state.rooms.flatMap(room=>room.items.filter(i=>i.stored&&!i.supportId)).map(i=>({...asset(i.assetId),storedId:i.id})):catalog.filter(a=>a.id!=='shell'&&(category==='all'||furnitureType(a)===category));
+  if(panel==='building')sheet=`<header><h2>墙体与房间</h2><button data-action="close">×</button></header>${boundaryPanel()}<details><summary>室内墙段 / 局部替换</summary><div class="h3-assets">${BUILDING_ASSETS.map(a=>`<button class="h3-asset" data-action="add-item" data-id="${a.id}"><img alt="" src="${thumbs.get(a.id)||''}">${a.name}</button>`).join('')}</div></details>`;
+  else if(panel==='furniture'||panel==='storage'){
+   const list=panel==='storage'?state.rooms.flatMap(room=>room.items.filter(i=>i.stored&&!i.supportId&&!i.dockId)).map(i=>({...asset(i.assetId),storedId:i.id})):catalog.filter(a=>a.id!=='shell'&&(category==='all'||['gaming','kitchen','bathroom'].includes(category)&&a.collection===category||furnitureType(a)===category));
    sheet=`<header><h2>${panel==='storage'?'收纳箱':'家具架'}</h2><button data-action="close">×</button></header><div class="h3-categories">${panel==='furniture'?Object.entries(TYPE_LABELS).map(([key,label])=>`<button data-action="category" data-value="${key}" aria-pressed="${category===key}">${label}</button>`).join(''):''}</div><div class="h3-assets">${list.map(a=>`<button class="h3-asset" data-action="${a.storedId?'restore':'add-item'}" data-id="${a.storedId||a.id}">${thumbs.has(a.id)?`<img alt="" src="${thumbs.get(a.id)}">`:'<span>◇</span>'}${esc(a.name)}</button>`).join('')}</div>${!list.length?'<p>这里暂时没有家具。</p>':''}`;
+   if(panel==='furniture'&&category==='doors')sheet=`<header><h2>门</h2><button data-action="close">×</button></header><div class="h3-categories">${Object.entries(TYPE_LABELS).map(([key,label])=>`<button data-action="category" data-value="${key}" aria-pressed="${category===key}">${label}</button>`).join('')}</div>${boundaryPanel(true)}`;
   }else if(panel==='selected'||panel==='palette')sheet='';
-  else if(panel==='rooms')sheet=`<header><h2>房间与楼层</h2><button data-action="close">×</button></header><div class="h3-roomlist">${state.rooms.map(n=>`<button data-action="room" data-id="${n.id}"><span>${esc(n.name)}</span><small>${n.level+1}F · ${n.x}, ${n.z}</small></button>`).join('')}</div>`;
+  else if(panel==='rooms')sheet=`<header><h2>房间与楼层</h2><button data-action="close">×</button></header><div class="h3-roomlist">${state.rooms.map(n=>`<button data-action="room" data-id="${n.id}"><span>${esc(n.name)}</span><small>${n.level+1}F · ${connectedRooms(state,n.id,catalog).length>1?'已合并 · ':''}${n.x}, ${n.z}</small></button>`).join('')}</div>`;
   else if(panel==='expand')sheet=`<header><h2>从${esc(r.name)}扩建</h2><button data-action="close">×</button></header><div class="h3-expand">${[['back','后方'],['up','楼上'],['front','前方'],['left','左边'],['down','楼下'],['right','右边']].map(([dir,label])=>`<button data-action="expand" data-direction="${dir}" ${dir==='down'&&r.level===0?'disabled':''}>＋ ${label}</button>`).join('')}</div><p>已有房间的位置会直接进入。新房间先留空，慢慢布置。</p>`;
-  else if(panel==='room-style')sheet=`<header><h2>这间房的样子</h2><button data-action="close">×</button></header><input class="h3-rename" aria-label="房间名字" maxlength="40" value="${esc(r.name)}"><div class="h3-actions"><button data-action="rename">保存名字</button><button data-action="export">导出布置</button><button data-action="import">导入布置</button></div><p>墙面颜色</p><div class="h3-swatches">${['#FFF2E3',...PALETTE.slice(0,5)].map(c=>`<button aria-label="墙色 ${c}" style="background:${c}" data-action="wall" data-value="${c}"></button>`).join('')}</div>`;
-  if(panel==='room-style')sheet+=`<p>整屋配色（墙面、边框和地板）</p><div class="h3-actions">${['奶油紫','草莓奶','鼠尾草','云朵蓝'].map((label,i)=>`<button data-action="house-theme" data-value="${i}">${label}</button>`).join('')}</div>${[['trim','边框与底座'],['floor','地板']].map(([part,label])=>`<p>${label}</p><div class="h3-swatches">${PALETTE.map(c=>`<button aria-label="${label} ${c}" style="background:${c}" data-action="house-color" data-part="${part}" data-value="${c}"></button>`).join('')}</div>`).join('')}`;
+  else if(panel==='room-style')sheet=`<header><h2>${esc(r.name)} · 装扮</h2><button data-action="close">×</button></header><input class="h3-rename" aria-label="房间名字" maxlength="40" value="${esc(r.name)}"><div class="h3-actions"><button data-action="rename">保存名字</button><button data-action="export">导出布置</button><button data-action="import">导入布置</button></div><p>墙面颜色</p><div class="h3-swatches">${['#FFF2E3',...PALETTE.slice(0,5)].map(c=>`<button aria-label="墙色 ${c}" style="background:${c}" data-action="wall" data-value="${c}"></button>`).join('')}</div>`;
+  if(panel==='room-style')sheet+=`<p>正在装扮哪间房</p><div class="h3-categories">${displayRooms(state,r).map(n=>`<button data-action="style-room" data-id="${n.id}" aria-pressed="${n.id===r.id}">${esc(n.name)}</button>`).join('')}</div><p>壁纸样式 · 只改这间房</p><div class="h3-categories">${Object.entries(WALL_STYLES).map(([id,label])=>`<button data-action="room-finish" data-part="wallStyle" data-value="${id}" aria-pressed="${(r.wallStyle||'solid')===id}">${label}</button>`).join('')}</div><p>地板样式</p><div class="h3-categories">${Object.entries(FLOOR_STYLES).map(([id,label])=>`<button data-action="room-finish" data-part="floorStyle" data-value="${id}" aria-pressed="${(r.floorStyle||'original')===id}">${label}</button>`).join('')}</div>`;
+  if(panel==='room-style')sheet+=`<p>房间配色（墙面、边框和地板）</p><div class="h3-actions">${['奶油紫','草莓奶','鼠尾草','云朵蓝'].map((label,i)=>`<button data-action="house-theme" data-value="${i}">${label}</button>`).join('')}</div>${[['trim','边框与底座'],['floor','地板']].map(([part,label])=>`<p>${label}</p><div class="h3-swatches">${PALETTE.map(c=>`<button aria-label="${label} ${c}" style="background:${c}" data-action="house-color" data-part="${part}" data-value="${c}"></button>`).join('')}</div>`).join('')}`;
   if(panel==='quality')sheet=`<header><h2>画质与耗电</h2><button data-action="close">×</button></header><p>只影响这台设备，自动记住选择。</p><div class="h3-actions">${Object.entries(qualities).map(([id,q])=>`<button data-action="quality" data-value="${id}" aria-pressed="${quality===id}">${q.label} · ${q.ratio}×</button>`).join('')}</div><p>${quality==='eco'?'低分辨率，关闭阴影与水母动画；静止时停止绘制。':quality==='balanced'?'标准分辨率，柔和阴影与轻微水母动画，最高 30 帧。':'高分辨率，保留阴影和动画，耗电相对较高。'}</p><p>当前绘制尺寸 ${Math.floor(size.w*renderer.getPixelRatio())} × ${Math.floor(size.h*renderer.getPixelRatio())}。所有档位在页面隐藏时停止绘制。</p>`;
-  if(panel==='chibi')sheet=`<header><h2>陪小人待一会儿</h2><button data-action="close">×</button></header><div class="h3-actions"><button data-action="chibi-view">蹲下看小人</button><button data-action="room-view">看全屋</button></div><div class="h3-actions" style="margin-top:10px">${motions.map(([id,label])=>`<button data-action="chibi-motion" data-value="${id}" aria-pressed="${visitorMotion===id}">${label}</button>`).join('')}</div><p>${resident.visible?'小手只轻轻挥，不会拉长。省电时动作播放一小会儿便停下。':'房间没有足够空地，请先收起一件落地家具。'}</p>`;
-  ui.innerHTML=`<div class="h3-top">${onBack?'<button class="h3-pill" data-action="back">2D 小屋</button>':''}<div class="h3-title"><strong>${esc(overview?'我的小小世界':r.name)}</strong><small>${r.level+1}F · ${state.rooms.length} 间房 · ${saved?'布置已保存':'尚未保存'}</small></div><button class="h3-pill" data-active="${overview}" data-action="overview">${overview?'回房间':'总览'}</button><button class="h3-pill" data-active="${edit}" data-action="edit">${edit?'完成':'布置'}</button></div><div class="h3-floor">${levels.map(l=>`<button data-active="${l===r.level}" data-action="floor" data-level="${l}">${l+1}F</button>`).join('')}</div><div class="h3-camera-tools"><button data-action="zoom" data-factor="1.2" aria-label="放大">＋</button><button data-action="zoom" data-factor=".833333" aria-label="缩小">−</button><button data-action="turn-view" data-angle="-.785398" aria-label="视角向左">↶</button><button data-action="turn-view" data-angle=".785398" aria-label="视角向右">↷</button></div>${edit?`<div class="h3-history"><button data-action="undo" aria-label="撤销" ${undo.length?'':'disabled'}>↶ 撤销</button><button data-action="redo" aria-label="重做" ${redo.length?'':'disabled'}>↷ 重做</button></div>`:''}${edit&&selected&&!sheet?`<section class="h3-object-bar">${selectedPanel()}</section>`:''}${sheet?`<section class="h3-sheet">${sheet}</section>`:''}<div class="h3-status" ${sheet||selected&&!error?'style="display:none"':''}><span class="${error?'error':''}">${esc(message||(overview?'点一间房，进去看看':edit?'点选后拖动家具 · 空白处转视角 · 双指缩放':'拖动看看小屋，点「布置」开始装扮'))}</span></div><nav class="h3-dock">${[...(visitor?[['chibi','♡','小人']]:[]),['furniture','♧','家具'],['storage','▱','收纳'],['expand','＋','扩建'],['rooms','⌂','房间'],['room-style','◌','装扮'],['quality','◇','画质']].map(([id,icon,label])=>`<button data-action="panel" data-panel="${id}" data-active="${panel===id}"><b>${icon}</b>${label}</button>`).join('')}</nav>`;
+  if(panel==='chibi')sheet=`<header><h2>陪小人待一会儿</h2><button data-action="close">×</button></header><div class="h3-actions"><button data-action="chibi-view">蹲下看小人</button><button data-action="room-view">看全屋</button></div><div class="h3-actions" style="margin-top:10px">${motions.map(([id,label])=>`<button data-action="chibi-motion" data-value="${id}" aria-pressed="${visitorMotion===id}">${visitorSeat&&id==='idle'?'坐好':visitorSeat&&id==='sleep'?'打瞌睡':label}</button>`).join('')}${visitorSeat?'<button data-action="chibi-stand">站起来</button>':''}</div>${roomSeats(r,catalog).length?`<p>找个位置坐坐</p><div class="h3-actions">${roomSeats(r,catalog).map(s=>`<button data-action="chibi-sit" data-id="${esc(s.itemId)}" data-seat="${esc(s.seatId)}" aria-pressed="${visitorSeat?.itemId===s.itemId&&visitorSeat?.seatId===s.seatId}">${esc(s.label)}</button>`).join('')}</div>`:'<p>放一张座椅，就可以坐坐啦。</p>'}${roomPlants(r,catalog).length?`<p>给绿植浇水</p><div class="h3-actions">${roomPlants(r,catalog).map(p=>`<button data-action="chibi-water" data-id="${esc(p.itemId)}" ${p.spot?'':'disabled'}>${esc(p.label)}${p.spot?'':' · 周围太挤啦'}</button>`).join('')}</div>`:''}<p>${resident.visible?'小手只轻轻挥，不会拉长。省电时动作播放一小会儿便停下。':'房间没有足够空地，请先收起一件落地家具。'}</p>`;
+  if(panel==='chibi'&&activities().length)sheet+=`<p>家具互动</p><div class="h3-actions">${activities().map(a=>`<button data-action="chibi-game" data-id="${esc(a.itemId)}" data-kind="${a.kind}" data-station="${a.stationId||''}" ${a.reason?'disabled':''} title="${esc(a.reason)}">${a.label}${a.reason?' · '+esc(a.reason):''}</button>`).join('')}${visitorActivity?'<button data-action="chibi-game-stop">休息一下</button>':''}</div>`;
+  if(panel==='furniture'&&category==='kitchen')sheet=sheet.replace('<div class="h3-assets">','<div class="h3-actions"><button data-action="dining-preset">摆好餐桌和两张餐椅</button></div><div class="h3-assets">');
+  if(panel==='furniture'&&category==='gaming')sheet=sheet.replace('<div class="h3-assets">',`<p>摆好一套（每件仍能单独移动）</p><div class="h3-actions">${Object.entries(GAMING_ACTIONS).map(([id,label])=>`<button data-action="gaming-preset" data-kind="${id}">${label}套装</button>`).join('')}</div><div class="h3-assets">`);
+  if(panel==='chibi')sheet+=`<p>点空地走过去；门会在靠近时打开。</p><div class="h3-actions">${doorLinks()}</div>`;
+  if(phone&&['furniture','storage','expand','rooms','room-style'].includes(panel)){const count=furnishingCounts(state,catalog).get(r.id)||0;sheet=sheet.replace('</header>',`</header><p class="h3-budget">手机容量 · 面积 ${state.rooms.length}/${PHONE_BUDGET.rooms} 块 · 本区域家具 ${count}/${PHONE_BUDGET.furniture} 件${state.rooms.length>PHONE_BUDGET.rooms||count>PHONE_BUDGET.furniture?' · 已超限，可继续收纳整理':''}</p>`);}
+  ui.innerHTML=`<div class="h3-top">${onBack?'<button class="h3-pill" data-action="back">2D 小屋</button>':''}<div class="h3-title"><strong>${esc(overview?'我的小小世界':r.name)}</strong><small>${r.level+1}F · ${roomGroups(state,catalog).length} 间房 · ${rotationPreview?'旋转预览 · 待放下':saved?'布置已保存':'尚未保存'}</small></div><button class="h3-pill" data-active="${overview}" data-action="overview">${overview?'回房间':'总览'}</button><button class="h3-pill" data-active="${edit}" data-action="edit">${edit?'完成':'布置'}</button></div><div class="h3-wall-views" aria-label="墙面显示">${Object.entries(WALL_VIEWS).map(([id,label])=>`<button data-action="wall-view" data-value="${id}" aria-pressed="${wallView===id}">${label}</button>`).join('')}</div><div class="h3-floor">${levels.map(l=>`<button data-active="${l===r.level}" data-action="floor" data-level="${l}">${l+1}F</button>`).join('')}</div><div class="h3-camera-tools"><button data-action="zoom" data-factor="1.2" aria-label="放大">＋</button><button data-action="zoom" data-factor=".833333" aria-label="缩小">−</button><button data-action="turn-view" data-angle="-.785398" aria-label="视角向左">↶</button><button data-action="turn-view" data-angle=".785398" aria-label="视角向右">↷</button></div>${edit?`<div class="h3-history"><button data-action="undo" aria-label="撤销" ${undo.length||rotationPreview?'':'disabled'}>↶ 撤销</button><button data-action="redo" aria-label="重做" ${redo.length?'':'disabled'}>↷ 重做</button></div>`:''}${edit&&selected&&!sheet?`<section class="h3-object-bar">${selectedPanel()}</section>`:''}${sheet?`<section class="h3-sheet">${sheet}</section>`:''}<div class="h3-status" ${sheet||selected&&!error?'style="display:none"':''}><span class="${error?'error':''}">${esc(message||(overview?'点一间房，进去看看':edit?'点选后拖动家具 · 空白处转视角 · 双指缩放':'点空地让小人走走 · 拖动转视角'))}</span></div><nav class="h3-dock">${[...(visitor?[['chibi','♡','小人']]:[]),['furniture','♧','家具'],['building','▥','建造'],['storage','▱','收纳'],['expand','＋','扩建'],['rooms','⌂','房间'],['room-style','◌','装扮'],['quality','◇','画质']].map(([id,icon,label])=>`<button data-action="panel" data-panel="${id}" data-active="${panel===id}"><b>${icon}</b>${label}</button>`).join('')}</nav>`;
  }
- function changeItem(patch){const i=item();if(!i)return;commit(()=>{moveFurniture(current(),i.id,patch,catalog);message='已放好';error=false})}
- function select(id){selected=id;panel='selected';edit=true;overview=false;controls.enabled=true;updateSelection();renderUI()}
+ const placementFor=a=>['floor','rug'].includes(a.surface)&&!a.building?placementRoom():current();
+ function checkWallLayout(){const why=layoutError(state,catalog);if(why)throw Error('墙段会挡住家具：'+why);}
+ function changeItem(patch){const i=item();if(!i)return false;return commit(()=>{moveInHome(state,current(),i.id,{...(rotationPreview?.id===i.id?rotationPreview:{}),...patch},catalog);if(asset(item()?.assetId)?.building)checkWallLayout();rotationPreview=null;message='已放好';error=false})}
+ function select(id){if(rotationPreview&&id!==selected&&!changeItem(rotationPreview))return;selected=id;const owner=selectedOwner();if(owner&&owner.id!==current().id){activateRoom(owner);persist();rebuild();}panel='selected';edit=true;overview=false;controls.enabled=true;updateSelection();renderUI()}
  function action(e){const b=e.target.closest('[data-action]');if(!b||b.disabled)return;const d=b.dataset;
+  if(d.action==='dining-preset'){commit(()=>{const items=placeDiningPreset(placementRoom(),catalog);if(current().items.length+items.length>100)throw Error('每间房最多保存 100 件家具');current().items.push(...items);panel=null;selected=null;message='餐桌椅摆好啦，在小人面板可以吃饭';});return;}
+  if(d.action==='fridge-toggle'){const i=item(),obj=objects.find(o=>o.userData.itemId===i?.id);if(!obj||asset(i.assetId)?.appliance!=='fridge')return;const why=kitchenEffects.isOpen(i.id)?'':fridgeOpenError(i,placementRoom(),catalog,resident.visible?resident.position.toArray():null);if(why){notify(why,true);return;}kitchenEffects.toggle(obj);dirty=true;wake();renderUI();return;}
+  if(d.action==='gaming-preset'){commit(()=>{const items=placeGamingPreset(d.kind,placementRoom(),catalog);if(current().items.length+items.length>100)throw Error('每间房最多保存 100 件家具');current().items.push(...items);panel=null;selected=null;message='设备和座位摆好啦，在小人面板开始玩吧';});return;}
+  if(d.action==='chibi-game'&&visitor){const next=activities().find(a=>a.itemId===d.id&&a.kind===d.kind&&(a.stationId||'')===(d.station||''));if(!next||next.reason){notify(next?.reason||'设备不在这里了',true);return;}stopWalking();visitorLocation=null;visitorPlant=null;visitorActivity=next;visitorSeat=next.seat;visitorMotion=next.kind;if(next.kind==='rhythm'&&camera.zoom>1.8){const offset=camera.position.clone().sub(controls.target);controls.target.fromArray(next.position).add(new THREE.Vector3(0,1.6,0));camera.position.copy(controls.target).add(offset);camera.zoom=1.8;camera.updateProjectionMatrix();controls.update();}visitorStart=elapsed;visitorUntil=elapsed+12;edit=false;overview=false;selected=null;panel=null;placeVisitor();animateVisitor(reducedMotion?1:0);message=next.label+'中 · 在小人面板可随时休息';dirty=true;wake();renderUI();return;}
+  if(d.action==='chibi-game-stop'){visitorActivity=null;gamingEffects.clear();kitchenEffects.updateMeal(null,0);visitorMotion='idle';visitorUntil=0;animateVisitor(0);dirty=true;wake();renderUI();return;}
+  if(['chibi-water','chibi-sit','chibi-stand','chibi-motion'].includes(d.action)){visitorActivity=null;gamingEffects.clear();kitchenEffects.updateMeal(null,0);}
+  if(d.action==='wall-view'){wallView=d.value;try{localStorage.setItem('sully-home3d-wall-view',wallView)}catch{}rebuild();renderUI();return;}
+  if(d.action==='boundary-edge'){boundaryEdge=d.value;renderUI();return;}
+  if(d.action==='boundary-kind'){editBoundary({kind:d.value});return;}
+  if(d.action==='boundary-door'){const v=boundary(current(),boundaryEdge);editBoundary({kind:v.kind==='open'?'wall_high':v.kind,door:{at:0,width:Math.ceil(Math.max(1.8,headWidth+.3)*5)/5,...v.door,kind:d.value}});return;}
+  if(d.action==='remove-door'){editBoundary({kind:boundary(current(),boundaryEdge).kind});return;}
+  if(['door-width','door-offset'].includes(d.action)){const v=clone(boundary(current(),boundaryEdge));if(v.door){const field=d.action==='door-width'?'width':'at';v.door[field]=Math.round((v.door[field]+Number(d.delta))*10)/10;if(v.door.width<Math.max(1.8,headWidth+.15)){notify('门洞不能比小人的头更窄',true);return;}editBoundary(v);}return;}
+  if(d.action==='chibi-door'){const r=state.rooms.find(r=>r.id===d.room),target=doorTarget(state,r,d.edge,d.inside==='true');if(target)walkTo(target);return;}
+  if(d.action==='rotate'){rotateItem();return;}
+  if(d.action==='place-rotation'){if(rotationPreview)changeItem(rotationPreview);return;}
+  if(d.action==='cancel-rotation'){cancelRotation();return;}
+  if(rotationPreview){
+   if(['undo','deselect'].includes(d.action)){cancelRotation();return;}
+   if(['store','remove-building'].includes(d.action))cancelRotation();
+   else if(!['zoom','turn-view','orbit','height','nudge'].includes(d.action)&&!changeItem(rotationPreview))return;
+  }
   if(d.action==='chibi-view'&&visitor&&resident.visible){
    const offset=camera.position.clone().sub(controls.target),distance=offset.length();
    offset.y=0;if(offset.lengthSq()<.001)offset.set(0,0,1);offset.normalize().multiplyScalar(distance);
    offset.y=distance*.045;
-   controls.target.copy(resident.position).add(new THREE.Vector3(0,.85,0));camera.position.copy(controls.target).add(offset);camera.zoom=2.4;
+   const jumping=visitorActivity?.kind==='rhythm';controls.target.copy(resident.position).add(new THREE.Vector3(0,jumping?1.6:.85,0));camera.position.copy(controls.target).add(offset);camera.zoom=jumping?1.8:2.4;
    camera.updateProjectionMatrix();controls.update();panel=null;dirty=true;wake();renderUI();return;
   }
   if(d.action==='room-view'){resize(true);panel=null;renderUI();return}
   if(d.action==='panel'&&d.panel==='chibi'){panel=panel==='chibi'?null:'chibi';edit=false;overview=false;selected=null;rebuild();renderUI();return}
-  if(d.action==='chibi-motion'&&visitor){visitorMotion=d.value;visitorStart=elapsed;visitorUntil=elapsed+4.4;visitor.animate(reducedMotion?1:0,visitorMotion);dirty=true;wake();renderUI();return}
+  if(d.action==='chibi-water'&&visitor){stopWalking();visitorLocation=null;
+   const spot=wateringSpot(current(),catalog,d.id);if(!spot){notify('绿植四周都太挤啦，先挪开一点家具',true);return;}
+   visitorSeat=null;visitorPlant={roomId:current().id,itemId:d.id,spot};visitorMotion='water';visitorStart=elapsed;visitorUntil=elapsed+4.5;
+   edit=false;overview=false;selected=null;panel=null;placeVisitor();animateVisitor(reducedMotion?1:0);dirty=true;wake();notify('找到空位啦，给绿植浇一点水');return;
+  }
+  if(d.action==='chibi-sit'&&visitor){stopWalking();visitorLocation=null;
+   const seat=roomSeats(current(),catalog).find(s=>s.itemId===d.id&&s.seatId===d.seat);
+   if(!seat)return;visitorPlant=null;visitorSeat=seat;visitorMotion='idle';visitorStart=elapsed;visitorUntil=elapsed+4.4;
+   animateVisitor(0);edit=false;overview=false;selected=null;panel=null;placeVisitor();updateSelection();renderer.shadowMap.needsUpdate=true;
+   notify('坐好啦，小脚晃不到地面');return;
+  }
+  if(d.action==='chibi-stand'&&visitor){visitorPlant=null;visitorSeat=null;visitorMotion='idle';visitorStart=elapsed;visitorUntil=0;placeVisitor();animateVisitor(0);dirty=true;wake();renderUI();return}
+  if(d.action==='chibi-motion'&&visitor){stopWalking();visitorPlant=null;visitorMotion=d.value;visitorStart=elapsed;visitorUntil=elapsed+4.4;placeVisitor();animateVisitor(reducedMotion?1:0);dirty=true;wake();renderUI();return}
   if(d.action==='orbit'){orbitMode=!orbitMode;controls.enabled=true;renderUI();return}
   if(d.action==='turn-view'){const offset=camera.position.clone().sub(controls.target);offset.applyAxisAngle(new THREE.Vector3(0,1,0),Number(d.angle));camera.position.copy(controls.target).add(offset);controls.update();dirty=true;wake();return}
   if(d.action==='quality'){quality=d.value;if(!qualities[quality])quality='eco';const q=qualities[quality];detailBudget=q.details;frameInterval=1000/q.fps;renderer.setPixelRatio(Math.min(devicePixelRatio,q.ratio));try{localStorage.setItem('sully-home3d-quality',quality)}catch{}rebuild();renderUI();return}
+  if(d.action==='room-finish'){const options=d.part==='floorStyle'?FLOOR_STYLES:d.part==='wallStyle'?WALL_STYLES:null;if(options&&Object.hasOwn(options,d.value))commit(()=>{current()[d.part]=d.value});return}
+  if(d.action==='style-room'){activateRoom(state.rooms.find(r=>r.id===d.id));selected=null;persist();rebuild();renderUI();return}
   if(d.action==='house-color'){commit(()=>{current()[d.part]=d.value});return}
   if(d.action==='house-theme'){commit(()=>{const themes=[['#FFF2E3','#A99BE8','#D7B28A'],['#FFF8F2','#F2B8D5','#E6C9B1'],['#F3F6EE','#A5B99A','#D7B28A'],['#FFF8F2','#91C9F4','#DAD3DE']];const t=themes[Number(d.value)];[current().wall,current().trim,current().floor]=t});return}
   if(d.action==='category'){category=d.value;renderUI();return}
+  if(d.action==='building-type'){if(item()&&asset(item().assetId)?.building&&BUILDING_ASSETS.some(a=>a.id===d.id))changeItem({assetId:d.id});return}
+  if(d.action==='building-edge'){if(item()&&asset(item().assetId)?.building){const i=item();changeItem(d.value==='inside'?{x:0,z:-.8}:placeBuildingOnEdge(i,d.value));}return}
+  if(d.action==='building-length'){if(item()&&asset(item().assetId)?.building)changeItem({length:Math.round(((item().length??BUILDING_LENGTH)+Number(d.delta))*10)/10});return}
+  if(d.action==='remove-building'){if(item()&&asset(item().assetId)?.building)commit(()=>{selectedOwner().items=selectedOwner().items.filter(i=>i.id!==selected);selected=null;panel=null;message='墙段已拆除，可以撤销'});return}
   if(d.action==='back'){onBack?.();return}
   if(d.action==='close'){panel=null;renderUI();return}
-  if(d.action==='edit'){edit=!edit;selected=null;panel=null;controls.enabled=true;updateSelection();renderUI();return}
-  if(d.action==='overview'){overview=!overview;edit=false;panel=null;selected=null;controls.enabled=true;rebuild();renderUI();return}
-  if(d.action==='panel'){panel=panel===d.panel?null:d.panel;if(['furniture','storage'].includes(panel)){edit=true;overview=false;controls.enabled=true;rebuild()}renderUI();return}
+  if(d.action==='edit'){stopWalking();edit=!edit;selected=null;panel=null;controls.enabled=true;updateSelection();renderUI();return}
+  if(d.action==='overview'){stopWalking();overview=!overview;edit=false;panel=null;selected=null;controls.enabled=true;rebuild();renderUI();return}
+  if(d.action==='panel'){panel=panel===d.panel?null:d.panel;if(['furniture','storage','building','room-style'].includes(panel)){stopWalking();edit=true;overview=false;controls.enabled=true;rebuild()}renderUI();return}
   if(d.action==='deselect'){selected=null;panel=null;updateSelection();renderUI();return}
   if(d.action==='palette'){panel=panel==='palette'?'selected':'palette';renderUI();return}
   if(d.action==='zoom'){camera.zoom=Math.max(.6,Math.min(2.8,camera.zoom*Number(d.factor)));camera.updateProjectionMatrix();dirty=true;wake();return}
-  if(d.action==='redo'){if(redo.length){undo.push(clone(state));state=redo.pop();selected=null;panel=null;persist();rebuild();renderUI()}return}
-  if(d.action==='undo'){if(undo.length){redo.push(clone(state));state=undo.pop();selected=null;panel=null;persist();rebuild();renderUI()}return}
-  if(d.action==='room'||d.action==='floor'){const r=d.action==='room'?state.rooms.find(r=>r.id===d.id):state.rooms.find(r=>r.level===Number(d.level));if(r){state.activeRoomId=r.id;overview=false;selected=null;panel=null;persist();rebuild();renderUI()}return}
-  if(d.action==='expand'){commit(()=>{addRoom(state,d.direction);panel=null;selected=null;edit=true;overview=false;controls.enabled=true;message='新空间，留给新的生活';error=false});return}
+  if(d.action==='redo'){if(redo.length){undo.push(clone(state));state=redo.pop();stopWalking();visitorLocation=null;selected=null;panel=null;persist();rebuild();renderUI()}return}
+  if(d.action==='undo'){if(undo.length){redo.push(clone(state));state=undo.pop();stopWalking();visitorLocation=null;selected=null;panel=null;persist();rebuild();renderUI()}return}
+  if(d.action==='building-room'){stopWalking();visitorLocation=null;activateRoom(state.rooms.find(r=>r.id===d.id));selected=null;persist();rebuild();renderUI();return}
+  if(d.action==='room'||d.action==='floor'){const r=d.action==='room'?state.rooms.find(r=>r.id===d.id):state.rooms.find(r=>r.level===Number(d.level));if(r){stopWalking();visitorLocation=null;activateRoom(r);overview=false;selected=null;panel=null;persist();rebuild();renderUI()}return}
+  if(d.action==='expand'){commit(()=>{visitorLocation=null;addRoom(state,d.direction);panel=null;selected=null;edit=true;overview=false;controls.enabled=true;message='新空间，留给新的生活';error=false});return}
   if(d.action==='add-item'||d.action==='restore'){commit(()=>{
    if(d.action==='add-item'){
     if(current().items.length>=100)throw Error('每间房最多保存 100 件家具');
-    const added=findPlace(asset(d.id),current(),catalog);current().items.push(added);selected=added.id;
+    const added=findPlace(asset(d.id),placementFor(asset(d.id)),catalog);current().items.push(added);selected=added.id;if(asset(added.assetId).building)checkWallLayout();
    }else{
     const owner=state.rooms.find(r=>r.items.some(i=>i.id===d.id&&i.stored));if(!owner)throw Error('收纳箱里没有这件家具');
     if(owner!==current()&&current().items.length>=100)throw Error('每间房最多保存 100 件家具');
-    const stored=owner.items.find(i=>i.id===d.id),next=findPlace(asset(stored.assetId),current(),catalog,stored.id);
-    const group=owner.items.filter(i=>i.id===stored.id||i.supportId===stored.id);
+    const stored=owner.items.find(i=>i.id===d.id),next=findPlace(asset(stored.assetId),placementFor(asset(stored.assetId)),catalog,stored.id,stored.length);
+    const group=furnitureGroup(owner,stored.id);
     if(owner!==current()&&current().items.length+group.length>100)throw Error('每间房最多保存 100 件家具');
     owner.items=owner.items.filter(i=>!group.includes(i));
     for(const i of group)i.stored=false;
-    current().items.push(...group);moveFurniture(current(),stored.id,{...next,color:stored.color},catalog);selected=next.id;
+    current().items.push(...group);moveInHome(state,current(),stored.id,{...next,color:stored.color},catalog);selected=next.id;
    }
    panel='selected';message='拖动试试新的位置';error=false;
   });return}
-  if(d.action==='copy'){const original=item();if(original)commit(()=>{if(current().items.length>=100)throw Error('每间房最多保存 100 件家具');const added=findPlace(asset(original.assetId),current(),catalog);added.color=original.color;current().items.push(added);selected=added.id});return}
+  if(d.action==='copy'){const original=item();if(original)commit(()=>{if(current().items.length>=100)throw Error('每间房最多保存 100 件家具');const added=findPlace(asset(original.assetId),placementFor(asset(original.assetId)),catalog,undefined,original.length);added.color=original.color;if(asset(original.assetId).building){added.rotation=original.rotation;const angle=original.rotation*Math.PI/180,length=original.length??BUILDING_LENGTH;added.x=original.x+Math.cos(angle)*length;added.z=original.z-Math.sin(angle)*length;if(placementError(added,current(),catalog)){Object.assign(added,findPlace(asset(original.assetId),placementFor(asset(original.assetId)),catalog,added.id,original.length));}}current().items.push(added);selected=added.id;if(asset(added.assetId).building)checkWallLayout();});return}
   if(d.action==='nudge'){const i=item();if(i){const a=asset(i.assetId);changeItem({x:i.x+(a.surface==='left'?0:Number(d.dx)),z:i.z+(a.surface==='back'?0:Number(d.dz))})}return}
-  if(d.action==='rotate'){if(item())changeItem({rotation:(item().rotation+90)%360});return}
   if(d.action==='height'){if(item())changeItem({y:Math.max(.15,Math.min(4.5,item().y+Number(d.dy)))});return}
-  if(d.action==='color'){commit(()=>{if(item())item().color=d.value||null});return}
-  if(d.action==='store'){commit(()=>{const i=item();if(i){for(const member of current().items)if(member.id===i.id||member.supportId===i.id)member.stored=true;if(i.supportId)i.supportId=null}selected=null;panel=null;message='已放进收纳箱，台面上的物件会一起收好';error=false});return}
+  if(d.action==='color'){if(d.value&&!validFurnitureColor(d.value))return;commit(()=>{if(item())selectedOwner().items.find(i=>i.id===selected).color=d.value||null});return}
+  if(d.action==='toggle-dock'){const i=item();if(i)changeItem({dockDisabled:!i.dockDisabled,dockId:null,dockSlot:null});return}
+  if(d.action==='store'){commit(()=>{const i=item();if(i){for(const member of furnitureGroup(selectedOwner(),i.id)){member.stored=true;if(member.id===i.id){member.supportId=null;member.dockId=null;member.dockSlot=null;}}}selected=null;panel=null;message='已收纳，桌面小物和吸附的椅子会一起收好';error=false});return}
   if(d.action==='wall'){commit(()=>{current().wall=d.value});return}
   if(d.action==='rename'){const name=ui.querySelector('.h3-rename').value.trim();if(name)commit(()=>{current().name=name});return}
   if(d.action==='export'){const url=URL.createObjectURL(new Blob([JSON.stringify(state,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='我的小屋.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);return}
-  if(d.action==='import'){const input=document.createElement('input');input.type='file';input.accept='.json,application/json';input.onchange=async()=>{try{const f=input.files?.[0];if(!f)return;if(f.size>1024*1024)throw Error('布置文件过大');const incoming=validateHome(JSON.parse(await f.text()),catalog);commit(()=>{state=incoming;selected=null;panel=null;message='布置已导入，可撤销回到刚才的房间'})}catch(e){notify(e.message,true)}};input.click();}
+  if(d.action==='import'){const input=document.createElement('input');input.type='file';input.accept='.json,application/json';input.onchange=async()=>{try{const f=input.files?.[0];if(!f)return;if(f.size>1024*1024)throw Error('布置文件过大');const incoming=validateHome(JSON.parse(await f.text()),catalog);const budgetError=phone&&phoneBudgetError(null,incoming,catalog);if(budgetError)throw Error(budgetError);commit(()=>{state=incoming;selected=null;panel=null;message='布置已导入，可撤销回到刚才的房间'})}catch(e){notify(e.message,true)}};input.click();}
  }
  ui.addEventListener('click',action,{signal:abort.signal});
+ ui.addEventListener('change',e=>{const input=e.target;if(!input.matches?.('[data-furniture-color]')||!validFurnitureColor(input.value)||!item()||item().color===input.value)return;const color=input.value;commit(()=>{selectedOwner().items.find(i=>i.id===selected).color=color;});},{signal:abort.signal});
  function coordinates(e){const rect=renderer.domElement.getBoundingClientRect();pointer.set((e.clientX-rect.left)/rect.width*2-1,-(e.clientY-rect.top)/rect.height*2+1);raycaster.setFromCamera(pointer,camera)}
  function pointerSupport(next){
   if(asset(next.assetId).surface!=='tabletop')return next;
-  for(const parent of current().items){const surface=asset(parent.assetId).support;if(parent.stored||!surface)continue;
+  for(const parent of placementRoom().items){if(parent.stored)continue;for(const surface of supportSurfaces(asset(parent.assetId))){
    const height=parent.y+surface.height,point=new THREE.Vector3();
    if(!raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,1,0),-height),point))continue;
-   const candidate=snapToSupport({...next,x:Math.round((point.x+drag.offset.x)/.05)*.05,z:Math.round((point.z+drag.offset.z)/.05)*.05},current(),catalog);
-   if(candidate.supportId===parent.id)return candidate;
-  }
-  return snapToSupport(next,current(),catalog);
+   const candidate=snapToSupport({...next,x:Math.round((point.x+drag.offset.x)/.05)*.05,z:Math.round((point.z+drag.offset.z)/.05)*.05},placementRoom(),catalog);
+   if(candidate.supportId===parent.id&&Math.abs(candidate.y-height)<.025)return candidate;
+  }}
+  return snapToSupport(next,placementRoom(),catalog);
  }
- function pick(e){coordinates(e);const hits=raycaster.intersectObjects(content.children,true);for(const hit of hits){let o=hit.object;while(o&&!o.userData.itemId&&!o.userData.roomId)o=o.parent;if(o)return o}return null}
+ function pointerWall(next){
+  const a=asset(next.assetId),candidates=[];
+  for(const face of wallFaces(current(),catalog)){
+   const fitted=mountOnFace(next,a,face);if(!fitted)continue;
+   const normal=face.axis==='z'?new THREE.Vector3(0,0,1):new THREE.Vector3(1,0,0),p=new THREE.Vector3();
+   if(!raycaster.ray.intersectPlane(new THREE.Plane(normal,-fitted[face.axis]),p))continue;
+   const along=face.axis==='z'?'x':'z';if(p[along]<face.lo||p[along]>face.hi||p.y<face.bottom||p.y>face.top)continue;
+   const sign=[0,270].includes(face.rotation)?1:-1;
+   const proposed={...fitted,[along]:Math.round((p[along]+sign*(drag.wallGrabX??0))/STEP)*STEP,y:Math.round((p.y+(drag.wallGrabY??-a.size[1]/2))/STEP)*STEP};
+   const mounted=mountOnFace(proposed,a,face);if(mounted)candidates.push({item:mounted,distance:p.distanceTo(raycaster.ray.origin)});
+  }
+  return candidates.sort((a,b)=>a.distance-b.distance)[0]?.item??null;
+ }
+ function pick(e){coordinates(e);const hits=raycaster.intersectObjects(content.children,true);for(const hit of hits){let ancestor=hit.object,visible=true;while(ancestor){if(!ancestor.visible){visible=false;break;}ancestor=ancestor.parent;}if(!visible)continue;let o=hit.object;while(o&&!o.userData.itemId&&!o.userData.roomId)o=o.parent;if(o)return o}return null}
  const activePointers=new Set();let multiGesture=false;
  controls.touches.TWO=THREE.TOUCH.DOLLY_ROTATE;controls.mouseButtons.RIGHT=THREE.MOUSE.ROTATE;
  function down(e){
@@ -249,50 +460,88 @@ export async function mountHomeEditor(host,{assetBase,initialState,onChange,onBa
   if(e.button!==0)return;const picked=pick(e);pointerDown={x:e.clientX,y:e.clientY,picked};
   if(overview||!edit||!picked?.userData.itemId||picked.userData.itemId!==selected)return;
   controls.enableRotate=false;const i=item(),a=asset(i.assetId);drag={id:e.pointerId,start:clone(i),candidate:clone(i),valid:true};
-  const normal=a.surface==='back'?new THREE.Vector3(0,0,1):a.surface==='left'?new THREE.Vector3(1,0,0):new THREE.Vector3(0,1,0);
+  const wallTurned=a.surface==='wall'&&i.rotation%180!==0;
+  const normal=a.surface==='back'||a.surface==='wall'&&!wallTurned?new THREE.Vector3(0,0,1):a.surface==='left'||wallTurned?new THREE.Vector3(1,0,0):new THREE.Vector3(0,1,0);
   plane.setFromNormalAndCoplanarPoint(normal,new THREE.Vector3(i.x,i.y,i.z));raycaster.ray.intersectPlane(plane,hit);drag.offset=new THREE.Vector3(i.x,i.y,i.z).sub(hit);
+  if(a.surface==='wall'){const along=wallTurned?'z':'x',sign=[0,270].includes(i.rotation)?1:-1;drag.wallGrabX=(i[along]-hit[along])*sign;drag.wallGrabY=i.y-hit.y;}
  }
- function move(e){if(!drag||drag.id!==e.pointerId||multiGesture)return;if(pointerDown&&Math.hypot(e.clientX-pointerDown.x,e.clientY-pointerDown.y)<5)return;coordinates(e);if(!raycaster.ray.intersectPlane(plane,hit))return;const p=hit.clone().add(drag.offset),a=asset(drag.start.assetId);let next={...drag.start};if(a.surface==='back'){next.x=Math.round(p.x/STEP)*STEP;next.y=Math.round(p.y/STEP)*STEP}else if(a.surface==='left'){next.z=Math.round(p.z/STEP)*STEP;next.y=Math.round(p.y/STEP)*STEP}else{next.x=Math.round(p.x/STEP)*STEP;next.z=Math.round(p.z/STEP)*STEP}next=pointerSupport(next);drag.candidate=next;let why='';const preview=clone(current());try{moveFurniture(preview,next.id,next,catalog)}catch(e){why=e.message}drag.valid=!why;message=why||'松手放下';error=!!why;const obj=objects.find(o=>o.userData.itemId===next.id);obj.position.set(next.x,next.y,next.z);for(const child of preview.items.filter(i=>i.supportId===next.id)){const mesh=objects.find(o=>o.userData.itemId===child.id);if(mesh){mesh.position.set(child.x,child.y,child.z);mesh.rotation.y=child.rotation*Math.PI/180}}selection.setFromObject(obj);placementGuide(obj,!why);dirty=true;wake();}
+ function move(e){
+  if(!drag||drag.id!==e.pointerId||multiGesture)return;
+  if(pointerDown&&Math.hypot(e.clientX-pointerDown.x,e.clientY-pointerDown.y)<5)return;
+  coordinates(e);const a=asset(drag.start.assetId);let next={...drag.start};
+  if(a.surface==='wall'){
+   next=pointerWall(next);
+   if(!next){drag.valid=false;message='把窗户拖到附近的高墙上';error=true;dirty=true;wake();return;}
+  }else{
+   if(!raycaster.ray.intersectPlane(plane,hit))return;const p=hit.clone().add(drag.offset);
+   if(a.surface==='back'){next.x=Math.round(p.x/STEP)*STEP;next.y=Math.round(p.y/STEP)*STEP}
+   else if(a.surface==='left'){next.z=Math.round(p.z/STEP)*STEP;next.y=Math.round(p.y/STEP)*STEP}
+   else{next.x=Math.round(p.x/STEP)*STEP;next.z=Math.round(p.z/STEP)*STEP}
+   next=a.building?snapBuildingToEdge(next):pointerSupport(next);
+  }
+  next=snapToFurniture(next,placementRoom(),catalog);const signature=JSON.stringify(next);if(signature===drag.lastCandidate)return;drag.lastCandidate=signature;
+  drag.candidate=next;let why='';const preview=previewFurniture(placementRoom(),next.id,next);try{const candidate=clone(state);moveInHome(candidate,current(),next.id,next,catalog);const budgetError=phone&&phoneBudgetError(state,candidate,catalog);if(budgetError)throw Error(budgetError);}catch(e){why=e.message}
+  drag.valid=!why;drag.why=why;message=a.surface==='wall'?'松手贴到这面墙':next.dockId?'松手吸附到桌子 · 桌椅会一起转向':'松手放下';error=false;
+  const obj=objects.find(o=>o.userData.itemId===next.id);objectPose(obj,next);
+  windowDaylight.preview(next.id,next);windowDaylight.invalidate();renderer.shadowMap.needsUpdate=true;
+  for(const child of furnitureGroup(preview,next.id).filter(i=>i.id!==next.id)){const mesh=objects.find(o=>o.userData.itemId===child.id);if(mesh){objectPose(mesh,child)}}
+  selection.setFromObject(obj);placementGuide(obj,!why);dirty=true;wake();
+ }
+
  function up(e){
   activePointers.delete(e.pointerId);controls.enableRotate=true;
   if(multiGesture){if(!activePointers.size)multiGesture=false;pointerDown=null;return}
   if(drag&&drag.id===e.pointerId){const final=drag;drag=null;placementGuide(null);dirty=true;wake();selection.material.color.set('#9d80bd');
-   if(e.type==='pointercancel'||!final.valid){rebuild();notify(e.type==='pointercancel'?'已取消移动':message,true)}
-   else if(JSON.stringify(final.start)!==JSON.stringify(final.candidate))changeItem(final.candidate);
+   if(e.type==='pointercancel'||!final.valid){rebuild();notify(e.type==='pointercancel'?'已取消移动':final.why||message,true)}
+   else if(rotationPreview||JSON.stringify(final.start)!==JSON.stringify(final.candidate))changeItem(final.candidate);
    pointerDown=null;return;
   }
   if(e.type!=='pointercancel'&&pointerDown&&Math.hypot(e.clientX-pointerDown.x,e.clientY-pointerDown.y)<8){const p=pointerDown.picked;
-   if(overview&&p?.userData.roomId){state.activeRoomId=p.userData.roomId;overview=false;persist();rebuild();renderUI()}
+   if(overview&&p?.userData.roomId){stopWalking();visitorLocation=null;state.activeRoomId=p.userData.roomId;overview=false;persist();rebuild();renderUI()}
    else if(edit&&p?.userData.itemId)select(p.userData.itemId);
-   else if(edit){selected=null;panel=null;updateSelection();renderUI()}
+   else if(edit&&p?.userData.boundaryEdge){activateRoom(state.rooms.find(r=>r.id===p.userData.roomId));boundaryEdge=p.userData.boundaryEdge;selected=null;panel='building';persist();rebuild();renderUI();}
+   else if(edit&&p?.userData.roomId&&p.userData.roomId!==current().id){stopWalking();visitorLocation=null;activateRoom(state.rooms.find(r=>r.id===p.userData.roomId));selected=null;persist();rebuild();renderUI();}
+   else if(edit){if(rotationPreview){changeItem(rotationPreview);}else{selected=null;panel=null;updateSelection();renderUI()}}
+   else if(!overview&&visitor){coordinates(e);const point=raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,1,0),-.18),new THREE.Vector3());if(point)walkTo([point.x+current().x*ROOM_STEP.x,point.z+current().z*ROOM_STEP.z]);}
   }pointerDown=null;
  }
  for(const [name,fn] of [['pointerdown',down],['pointermove',move],['pointerup',up],['pointercancel',up]])renderer.domElement.addEventListener(name,fn,{signal:abort.signal,capture:true});
- function keydown(e){if(e.target instanceof HTMLInputElement)return;if(e.key==='Escape'){panel=null;selected=null;updateSelection();renderUI()}if(e.key==='f'){if(document.fullscreenElement)document.exitFullscreen();else host.requestFullscreen?.()}if((e.ctrlKey||e.metaKey)&&['z','y'].includes(e.key.toLowerCase())){e.preventDefault();ui.querySelector('[data-action="'+(e.shiftKey||e.key.toLowerCase()==='y'?'redo':'undo')+'"]')?.click()}if(edit&&item()){const deltas={ArrowLeft:[-.2,0],ArrowRight:[.2,0],ArrowUp:[0,-.2],ArrowDown:[0,.2]};if(deltas[e.key]){e.preventDefault();const [x,z]=deltas[e.key],a=asset(item().assetId);changeItem({x:item().x+(a.surface==='left'?0:x),z:item().z+(a.surface==='back'?0:z)})}}}
+ function keydown(e){if(e.target instanceof HTMLInputElement)return;if(e.key==='Escape'){if(rotationPreview){cancelRotation();return;}panel=null;selected=null;updateSelection();renderUI()}if(e.key==='f'){if(document.fullscreenElement)document.exitFullscreen();else host.requestFullscreen?.()}if((e.ctrlKey||e.metaKey)&&['z','y'].includes(e.key.toLowerCase())){e.preventDefault();ui.querySelector('[data-action="'+(e.shiftKey||e.key.toLowerCase()==='y'?'redo':'undo')+'"]')?.click()}if(edit&&item()){const deltas={ArrowLeft:[-.2,0],ArrowRight:[.2,0],ArrowUp:[0,-.2],ArrowDown:[0,.2]};if(deltas[e.key]){e.preventDefault();const [x,z]=deltas[e.key],a=asset(item().assetId);changeItem({x:item().x+(a.surface==='left'?0:x),z:item().z+(a.surface==='back'?0:z)})}}}
  host.tabIndex=0;host.addEventListener('keydown',keydown,{signal:abort.signal});
  const observer=new ResizeObserver(()=>resize());observer.observe(stage);
  function tick(now=performance.now()){
   frame=0;if(destroyed||suspended||document.hidden)return;inTick=true;const dt=Math.min(.05,(now-lastTick)/1000);lastTick=now;
   let settling=false;if(!manual&&!document.hidden)elapsed+=dt;
   if(!document.hidden&&now-lastDraw>=frameInterval-.5){
+   const applianceChanged=kitchenEffects.updateDoors(manual?0:dt,reducedMotion);if(applianceChanged){dirty=true;windowDaylight.invalidate();renderer.shadowMap.needsUpdate=true;}
    const breathing=animated.length&&!overview&&!reducedMotion&&qualities[quality].motion;
    if(breathing)for(const a of animated)a.o.position.y=a.y+Math.sin(elapsed*a.speed+a.phase)*a.amplitude;
-   const acting=visitor&&resident.visible&&!edit&&!reducedMotion&&(qualities[quality].motion||elapsed<visitorUntil);
-   if(acting)visitor.animate(elapsed-visitorStart,visitorMotion);
+   const acting=visitor&&resident.visible&&!edit&&(!!walking||!reducedMotion&&(qualities[quality].motion||elapsed<visitorUntil));
+   if(acting)animateVisitor(elapsed-visitorStart);
    settling=controls.update();if(dirty||breathing||acting||drag){renderer.render(scene,camera);renderedFrames++;dirty=false;lastDraw=now}
   }
-  inTick=false;if(settling||dirty||drag||animated.length&&!overview&&!reducedMotion&&qualities[quality].motion||visitor&&resident.visible&&!edit&&!reducedMotion&&(qualities[quality].motion||elapsed<visitorUntil))wake();
+  inTick=false;if(settling||dirty||drag||kitchenEffects.moving||animated.length&&!overview&&!reducedMotion&&qualities[quality].motion||visitor&&resident.visible&&!edit&&(!!walking||!reducedMotion&&(qualities[quality].motion||elapsed<visitorUntil)))wake();
  }
  document.addEventListener('visibilitychange',()=>{if(document.hidden){cancelAnimationFrame(frame);frame=0}else{dirty=true;lastTick=performance.now();wake()}},{signal:abort.signal});
- function dispose(){if(destroyed&&!kit)return;visitor?.dispose();visitor=null;resident.clear();destroyed=true;abort.abort();observer.disconnect();cancelAnimationFrame(frame);controls.dispose();clearContent();for(const m of materialCache.values())m.dispose();materialCache.clear();kit?.scene.traverse(o=>{if(o.isMesh){o.geometry.dispose();for(const m of Array.isArray(o.material)?o.material:[o.material]){for(const value of Object.values(m))if(value?.isTexture)value.dispose();m.dispose()}}});distantGeometry.dispose();for(const m of distantMaterials.values())m.dispose();distantMaterials.clear();key.shadow.dispose();grid.geometry.dispose();grid.material.dispose();footprint.geometry.dispose();footprint.material.dispose();for(const material of outlineMaterials)material.dispose();ground.geometry.dispose();ground.material.dispose();selection.geometry.dispose();selection.material.dispose();renderer.dispose();host.innerHTML='';host.classList.remove('home3d');}
+ function dispose(){if(destroyed&&!kit)return;gamingEffects.clear();visitor?.dispose();visitor=null;watering.dispose();kitchenEffects.dispose();finishes.dispose();windowDaylight.dispose();resident.clear();destroyed=true;abort.abort();observer.disconnect();cancelAnimationFrame(frame);controls.dispose();clearContent();for(const m of materialCache.values())m.dispose();materialCache.clear();kit?.scene.traverse(o=>{if(o.isMesh){o.geometry.dispose();for(const m of Array.isArray(o.material)?o.material:[o.material]){for(const value of Object.values(m))if(value?.isTexture)value.dispose();m.dispose()}}});distantGeometry.dispose();for(const m of distantMaterials.values())m.dispose();distantMaterials.clear();key.shadow.dispose();grid.geometry.dispose();grid.material.dispose();footprint.geometry.dispose();footprint.material.dispose();for(const material of outlineMaterials)material.dispose();ground.geometry.dispose();ground.material.dispose();selection.geometry.dispose();selection.material.dispose();renderer.dispose();host.innerHTML='';host.classList.remove('home3d');}
  signal?.addEventListener('abort',dispose,{once:true});
  try{
   [catalog,kit]=await Promise.all([fetch(new URL('catalog.json',assetBase),{signal:abort.signal}).then(r=>{if(!r.ok)throw Error('家具目录加载失败');return r.json()}),fetch(new URL('kit.glb',assetBase),{signal:abort.signal}).then(r=>{if(!r.ok)throw Error('家具模型加载失败');return r.arrayBuffer()}).then(data=>new GLTFLoader().parseAsync(data,assetBase))]);
   if(destroyed){dispose();return {dispose}}
-  for(const root of kit.scene.children)if(root.userData.assetId)templates.set(root.userData.assetId,root);
+  const externalLoads=await Promise.allSettled(catalog.filter(a=>a.url).map(async a=>{
+   const data=await fetch(new URL(a.url,assetBase),{signal:abort.signal}).then(r=>{if(!r.ok)throw Error('家具模型加载失败：'+a.name);return r.arrayBuffer()});
+   const loaded=await new GLTFLoader().parseAsync(data,assetBase),root=new THREE.Group();root.userData.assetId=a.id;
+   const model=loaded.scene,bounds=new THREE.Box3().setFromObject(model),scale=a.size[0]/bounds.getSize(new THREE.Vector3()).x;
+   model.scale.multiplyScalar(scale);bounds.setFromObject(model);const center=bounds.getCenter(new THREE.Vector3());model.position.sub(new THREE.Vector3(center.x,bounds.min.y,center.z));root.add(model);kit.scene.add(root);
+  }));
+  for(const result of externalLoads)if(result.status==='rejected')throw result.reason;
+  if(destroyed){dispose();return {dispose}}
+  catalog.push(...BUILDING_ASSETS);for(const a of catalog)assetIndex.set(a.id,a);
+  for(const root of createBuildingTemplates())kit.scene.add(root);
+  for(const root of kit.scene.children)if(root.userData.assetId){const id=root.userData.assetId;templates.set(id,root);const mats=[];root.traverse(o=>{if(o.isMesh)mats.push(...(Array.isArray(o.material)?o.material:[o.material]))});const names=furniturePaintMaterials(asset(id),mats.map(m=>m.name));paintTargets.set(id,names);defaultPaintColors.set(id,"#"+(mats.find(m=>names.includes(m.name))?.color.getHexString()||"b2a2cd"));}
   let incoming=initialState;
   if(!incoming&&storageKey){const text=localStorage.getItem(storageKey);if(text)incoming=JSON.parse(text)}
-  state=incoming?validateHome(incoming,catalog):createHome(catalog);if(!incoming||incoming.assetVersion!==2)persist();
+  state=incoming?validateHome(incoming,catalog):createHome(catalog);if(!incoming||JSON.stringify(incoming)!==JSON.stringify(state))persist();
   host.querySelector('.h3-loading').remove();rebuild();renderUI();tick();
   // Photographs of the actual asset geometries, generated once and reused in the shelf.
   const ts=new THREE.Scene();ts.background=new THREE.Color('#f1e8ee');ts.add(new THREE.HemisphereLight('#fff7f0','#aca1b9',2.5));const tl=new THREE.DirectionalLight('#fff5e7',3);tl.position.set(3,6,4);ts.add(tl);
@@ -300,5 +549,5 @@ export async function mountHomeEditor(host,{assetBase,initialState,onChange,onBa
   for(const a of catalog.filter(a=>a.id!=='shell')){const obj=templates.get(a.id)?.clone(true);if(!obj)continue;ts.add(obj);const b=new THREE.Box3().setFromObject(obj),c=b.getCenter(new THREE.Vector3()),s=b.getSize(new THREE.Vector3());const h=Math.max(s.x,s.y,s.z)*1.3+.1;tc.left=-h*.64;tc.right=h*.64;tc.top=h/2;tc.bottom=-h/2;tc.position.copy(c).add(new THREE.Vector3(6,5,8));tc.lookAt(c);tc.updateProjectionMatrix();renderer.setRenderTarget(target);renderer.render(ts,tc);renderer.readRenderTargetPixels(target,0,0,128,100,pixels);const image=ctx.createImageData(128,100);for(let y=0;y<100;y++)image.data.set(pixels.subarray((99-y)*512,(100-y)*512),y*512);ctx.putImageData(image,0,0);thumbs.set(a.id,canvas.toDataURL());ts.remove(obj)}
   renderer.setRenderTarget(null);target.dispose();dirty=true;wake();renderUI();
  }catch(e){if(destroyed)return {dispose};dispose();host.innerHTML=`<div class="h3-loading"><span>${esc(e.message)}</span><button>重新加载</button></div>`;host.querySelector('button').onclick=()=>location.reload();throw e}
- return {dispose,setSuspended(value){suspended=value;if(value){cancelAnimationFrame(frame);frame=0;}else{dirty=true;lastTick=performance.now();wake();}},setVisitor,getState:()=>clone(state),inspect:()=>({ready:true,chibiVisible:resident.visible,chibiMotion:visitorMotion,chibiPosition:resident.position.toArray(),outlineVisible:!!outlineGroup,gridVisible:grid.visible,footprintVisible:footprint.visible,placementValid:drag?.valid??null,quality,pixelRatio:renderer.getPixelRatio(),cameraPosition:camera.position.toArray(),zoom:camera.zoom,undoCount:undo.length,redoCount:redo.length,orbitMode,overview,edit,selected,rooms:state.rooms,activeRoomId:state.activeRoomId,panel,message,saved,assets:catalog.map(a=>a.id),drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,geometries:renderer.info.memory.geometries,textures:renderer.info.memory.textures,materials:materialCache.size,renderedFrames,frameCap:1000/frameInterval,detailRooms:overview?Math.min(detailBudget,state.rooms.length):1}),advanceTime:ms=>{manual=true;elapsed+=ms/1000;for(const a of animated)a.o.position.y=a.y+Math.sin(elapsed*a.speed+a.phase)*a.amplitude;renderer.render(scene,camera)},select,projectItem:id=>{const o=objects.find(o=>o.userData.itemId===id);if(!o)return null;const p=new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3()).project(camera);return {x:(p.x+1)*size.w/2,y:(1-p.y)*size.h/2}}};
+ return {dispose,setSuspended(value){suspended=value;if(value){cancelAnimationFrame(frame);frame=0;}else{dirty=true;lastTick=performance.now();wake();}},setVisitor,getState:()=>clone(state),inspect:()=>({ready:true,kitchen:kitchenEffects.inspect(),windowDaylight:windowDaylight.inspect(),lighting:{shadows:renderer.shadowMap.enabled,shadowSize:key.shadow.mapSize.x,ambient:hemi.intensity,key:key.intensity,fill:fill.intensity},phoneBudget:phone?PHONE_BUDGET:null,furnitureCounts:Object.fromEntries(furnishingCounts(state,catalog)),wallView,visibleRoomIds:[...visibleRoomIds],roomGroups:roomGroups(state,catalog).map(rs=>rs.map(r=>r.id)),walking:!!walking,headWidth,visitorLocation,doorStates:doors.map(d=>({kind:d.userData.doorKind,rotation:d.userData.doorLeaf.rotation.y,x:d.userData.doorLeaf.position.x})),rotationPreview:rotationPreview?{...rotationPreview}:null,chibiVisible:resident.visible,chibiMotion:visitorMotion,chibiPosture:visitorSeat?'seated':'standing',chibiSeat:visitorSeat,chibiWatering:visitorPlant,chibiActivity:visitorActivity,wateringVisible:watering.root.visible,chibiRotation:resident.rotation.y,chibiPosition:resident.position.toArray(),outlineVisible:!!outlineGroup,gridVisible:grid.visible,footprintVisible:footprint.visible,placementValid:drag?.valid??null,quality,pixelRatio:renderer.getPixelRatio(),cameraPosition:camera.position.toArray(),cameraTarget:controls.target.toArray(),zoom:camera.zoom,undoCount:undo.length,redoCount:redo.length,orbitMode,overview,edit,selected,rooms:state.rooms,activeRoomId:state.activeRoomId,panel,message,saved,assets:catalog.map(a=>a.id),drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,geometries:renderer.info.memory.geometries,textures:renderer.info.memory.textures,materials:materialCache.size,finishMaterials:finishes.count,renderedFrames,frameCap:1000/frameInterval,detailRooms:detailedRoomIds.size}),advanceTime:ms=>{manual=true;elapsed+=ms/1000;if(kitchenEffects.updateDoors(ms/1000,reducedMotion)){windowDaylight.invalidate();renderer.shadowMap.needsUpdate=true;}if(visitor&&resident.visible&&!edit)animateVisitor(reducedMotion?1:elapsed-visitorStart);for(const a of animated)a.o.position.y=a.y+Math.sin(elapsed*a.speed+a.phase)*a.amplitude;renderer.render(scene,camera)},select,projectPoint:position=>{const p=new THREE.Vector3(...position).project(camera);return {x:(p.x+1)*size.w/2,y:(1-p.y)*size.h/2}},projectItem:id=>{const o=objects.find(o=>o.userData.itemId===id);if(!o)return null;const p=new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3()).project(camera);return {x:(p.x+1)*size.w/2,y:(1-p.y)*size.h/2}}};
 }

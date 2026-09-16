@@ -31,7 +31,7 @@ if((await inspect()).rooms[0].name!=='水母与绿叶')throw Error('Rename faile
 if(await page.locator('[data-action="close"]').count())await page.locator('[data-action="close"]').click();
 await page.locator('[data-panel="expand"]').click();await page.locator('[data-direction="right"]').click();
 await page.locator('[data-panel="furniture"]').click();await page.locator('[data-action="add-item"][data-id="sofa"]').click();
-await page.locator('[data-action="rotate"]').click();
+await page.locator('[data-action="rotate"]').click();await page.locator('[data-action="place-rotation"]').click();
 const newRoom=(await inspect()).rooms.at(-1),moving=newRoom.items[0];
 if(await page.locator('[data-action="close"]').count())await page.locator('[data-action="close"]').click();
 const point=await page.evaluate(id=>window.__homeEditor.projectItem(id),moving.id);
