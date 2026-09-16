@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<title>iOS 顶部渐变对照</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0f1115; font: 16px system-ui; }
+  main { min-height: 100dvh; background: #faedf3; color: #302938; }
+  header { padding: calc(env(safe-area-inset-top, 0px) + 16px) 20px 16px; background: #ffffffcc; backdrop-filter: blur(20px); }
+  section { padding: 24px; }
+  button, input { padding: 12px; font: inherit; max-width: 100%; }
+  article { min-height: 120vh; padding-top: 32px; }
+</style>
+<main>
+  <header>‹ 返回　　顶部文字应清晰可读</header>
+  <section>
+    <p id="mode"></p>
+    <button id="toggle">切换顶部纯色层</button>
+    <p>观察系统状态栏下方是否仍有白雾、是否盖住返回和标题；向下滚动后再回到顶部对比。</p>
+    <input placeholder="点此检查键盘弹出与收回">
+    <article>滚动测试区域</article>
+  </section>
+</main>
+<script type="module">
+  import { createBrowserTopEdge } from '../../utils/iosBrowserTopEdge.ts';
+  const edge = createBrowserTopEdge();
+  const label = document.getElementById('mode');
+  const update = () => { label.textContent = edge.isConnected ? '候选修复：已开启（顶部 4px 深色层）' : '原始状态：未开启'; };
+  document.getElementById('toggle').onclick = () => {
+    if (edge.isConnected) edge.remove(); else document.body.appendChild(edge);
+    update();
+  };
+  update();
+</script>
+</html>
