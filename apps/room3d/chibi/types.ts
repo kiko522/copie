@@ -3,7 +3,7 @@ export type HairMode='wrap'|'project';
 // `puff` keeps its stored key for compatibility; it now controls curved-sheet depth.
 export interface HairLayer { length:number; width:number; offsetY:number; distance:number; mode?:HairMode; offsetX?:number; offsetZ?:number; puff?:number; }
 export interface ExtraHair extends HairLayer { id:string; source:string; src?:string; }
-export interface HairSettings { layers:Record<string,HairLayer>; extras:ExtraHair[]; assetModes?:Record<string,HairMode>; assets?:Record<string,string>; }
+export interface HairSettings { layers:Record<string,HairLayer>; extras:ExtraHair[]; assetModes?:Record<string,HairMode>; assets?:Record<string,string>; bodyShape?:'classic'|'blank'; }
 // Reviewed against the shipped PNGs: buns, ponytails, tufts and cat ears.
 export const builtinHairModes:Record<string,HairMode>=Object.fromEntries(['back2_05','back2_06','back2_07','back2_010','back2_011','back2_012','back2_013','back2_014'].map(id=>[id,'project']));
 export function hairMode(settings:HairSettings|undefined,key:string):HairMode{
