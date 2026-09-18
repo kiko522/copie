@@ -11,6 +11,7 @@ export function createPoseHandles(scene:T.Scene,camera:T.Camera,canvas:HTMLCanva
  const markers:Array<T.Mesh<T.BoxGeometry,T.MeshBasicMaterial>>=[];
  rigs.forEach((rig,index)=>Object.entries(rig.bones).forEach(([name,bone])=>{
   const marker=new T.Mesh(geometry,new T.MeshBasicMaterial({color:0x35bccb,wireframe:true,depthTest:false,depthWrite:false,transparent:true,opacity:.9}));
+  if(/_(thumb|index|middle|ring|pinky)/.test(name))marker.scale.setScalar(.32);
   marker.renderOrder=100;marker.userData={name,bone,index};group.add(marker);markers.push(marker);
  }));
  let activeRig=1,selected='L_upperArm',enabled=true;

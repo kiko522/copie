@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {buildBody,loadBody} from './FbxBody';
 import {BLANK_SCALE} from './blankBody';
+import {dressHoodie} from './hoodieClothes';
 import type {Parts,Motion,Posture,HairSettings,ActivityPose} from './types';
 import type {RollResult} from './CreatorRollBridge';
 export const NEW_BODY_HOME_PERCENT=172;
@@ -16,6 +17,7 @@ export async function createVisitor(parts:Parts,hair?:HairSettings){
  try{body=buildBody(source,parts,'outfit',hair);}
  finally{source.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();for(const m of Array.isArray(o.material)?o.material:[o.material])m.dispose();}});}
  const root=new THREE.Group();root.name='little-world-chibi';root.add(body.root);
+ if(body.rig){const outfit=dressHoodie(body.rig);body.resources.push(...outfit.resources);}
  // Approved home size: 172% of the original 1.4-unit height baseline.
  // Scale the whole hierarchy so hair, clothing and the skeleton stay aligned.
  body.root.scale.setScalar(hair?.bodyShape==='blank'?1.4/BLANK_SCALE*(NEW_BODY_HOME_PERCENT/100):.7);

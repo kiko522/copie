@@ -1,5 +1,6 @@
 import * as T from 'three';
 import type {bindBlankBody} from '../../apps/room3d/chibi/blankRig';
+import {BLANK_FINGERS} from '../../apps/room3d/chibi/blankFingers';
 
 type Rotations=Record<string,[number,number,number]>;
 export function createPoseEditor(host:HTMLElement,rig:ReturnType<typeof bindBlankBody>,onChange:()=>void){
@@ -7,6 +8,7 @@ export function createPoseEditor(host:HTMLElement,rig:ReturnType<typeof bindBlan
  let rotations:Rotations={};
  const status=document.createElement('p');status.setAttribute('role','status');
  const names:Record<string,string>={root:'整体',hips:'胯部',spine:'腰部',chest:'胸部',neck:'脖子',head:'头部',clavicle:'锁骨 / 肩膀',upperArm:'上臂',forearm:'前臂',hand:'手腕',thigh:'大腿',shin:'小腿 / 膝盖',foot:'脚踝',toe:'脚趾'};
+ for(const finger of BLANK_FINGERS){names[finger.name]=`${finger.label} · 指根`;names[`${finger.name}_tip`]=`${finger.label} · 指节`;}
  const select=document.createElement('select');select.setAttribute('aria-label','选择骨骼');
  for(const name of Object.keys(rig.bones)){const option=document.createElement('option');option.value=name;option.textContent=name.includes('_')?`${name[0]==='L'?'左':'右'}${names[name.slice(2)]}`:names[name];select.append(option);}
  select.value='L_upperArm';host.append(select);
@@ -29,6 +31,9 @@ export function createPoseEditor(host:HTMLElement,rig:ReturnType<typeof bindBlan
  button('当前骨骼归零',()=>{rotations[select.value]=[0,0,0];update();});
  button('全部回到 T 姿势',()=>{rotations=Object.fromEntries(Object.keys(rig.bones).map(name=>[name,[0,0,0]]));update();});
  const snapshot=()=>Object.fromEntries(Object.entries(rig.bones).map(([name,bone])=>[name,bone.rotation.toArray().slice(0,3).map(v=>T.MathUtils.radToDeg(v as number))])) as Rotations;
+ for(const [label,curl] of [['双手张开',0],['双手轻握',.35],['双手握拳',1]] as const)button(label,()=>{
+  rig.setHandCurl('L',curl);rig.setHandCurl('R',curl);rotations=snapshot();update();
+ });
  const validate=(data:any):Rotations=>{
   if(data?.version!==1||data.model!=='tiny-t-pose'||!data.rotations||typeof data.rotations!=='object')throw Error('不是当前素体的动作文件');
   const clean:Rotations={};

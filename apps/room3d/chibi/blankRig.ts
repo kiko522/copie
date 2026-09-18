@@ -1,13 +1,15 @@
 import * as T from 'three';
 import source from './blankBody.json';
 import {BLANK_SCALE} from './blankBody';
+import {BLANK_FINGERS,fingerWeights,type HandSide} from './blankFingers';
 
 export type RigPose='bind'|'relaxed'|'reference'|'arm'|'knee'|'head';
 const smooth=T.MathUtils.smoothstep;
 // Little Figure source coordinates; preserve its original rest proportions.
-const at=(x:number,y:number,z=0)=>new T.Vector3(x*BLANK_SCALE,(y+.5)*BLANK_SCALE,z*BLANK_SCALE);
 
 export function bindBlankBody(original:T.Mesh,hair:T.Group){
+ const bodyHeight=original.geometry.userData.bodyHeight??1;
+ const at=(x:number,y:number,z=0)=>new T.Vector3(x*BLANK_SCALE,(y+.5)*BLANK_SCALE*bodyHeight,z*BLANK_SCALE);
  const bones:T.Bone[]=[],named:Record<string,T.Bone>={},indices:Record<string,number>={};
  const add=(name:string,parent:string|null,position:T.Vector3)=>{
   const bone=new T.Bone();bone.name=name;bone.position.copy(position);
@@ -27,6 +29,19 @@ export function bindBlankBody(original:T.Mesh,hair:T.Group){
   add(`${prefix}_foot`,`${prefix}_shin`,at(side*.049,-.451,-.001));
   add(`${prefix}_toe`,`${prefix}_foot`,at(side*.049,-.483,.045));
  }
+ // Append finger joints after the original 22 bones to retain existing indices.
+ const fingerJoints:Array<{name:string;side:HandSide;axis:T.Vector3;curl:number}>=[];
+ for(const [side,prefix] of [[1,'L'],[-1,'R']] as const)for(const finger of BLANK_FINGERS){
+  const a=new T.Vector3(...finger.start),b=new T.Vector3(...finger.tip),mid=a.clone().lerp(b,.55);
+  const base=`${prefix}_${finger.name}`,tip=`${base}_tip`;
+  add(base,`${prefix}_hand`,at(side*a.x,a.y,a.z));add(tip,base,at(side*mid.x,mid.y,mid.z));
+  const axis=new T.Vector3(b.z-a.z,0,-side*(b.x-a.x)).normalize();
+  fingerJoints.push({name:base,side:prefix,axis,curl:finger.name==='thumb'?.8:1.05},{name:tip,side:prefix,axis,curl:finger.name==='thumb'?1:1.3});
+ }
+ const setHandCurl=(side:HandSide,amount:number,targets?:Record<string,T.Quaternion>)=>{
+  const value=Number.isFinite(amount)?T.MathUtils.clamp(amount,0,1):0;
+  for(const joint of fingerJoints)if(joint.side===side)(targets?.[joint.name]??named[joint.name].quaternion).setFromAxisAngle(joint.axis,value*joint.curl);
+ };
  const g=original.geometry,skinIndices:number[]=[],skinWeights:number[]=[];
  for(let i=0;i<g.attributes.position.count;i++){
   const [x,y,z]=source.positions.slice(i*3,i*3+3),ax=Math.abs(x),prefix=x>=0?'L':'R';
@@ -49,6 +64,13 @@ export function bindBlankBody(original:T.Mesh,hair:T.Group){
    const chest=smooth(y,-.015,.075),spine=smooth(y,-.105,-.025),neck=smooth(y,.10,.13);
    put('hips',(1-arm)*(1-spine));put('spine',(1-arm)*spine*(1-chest));
    put('chest',(1-arm)*spine*chest*(1-neck));put('neck',(1-arm)*spine*chest*neck);
+  }
+  if(ax>.305&&y<.125&&y>.025){
+   const finger=fingerWeights(ax,y,z);
+   if(finger&&finger.weight>0){
+    for(const [name,value] of weights)weights.set(name,value*(1-finger.weight));
+    put(`${prefix}_${finger.name}`,finger.weight*(1-finger.distal));put(`${prefix}_${finger.name}_tip`,finger.weight*finger.distal);
+   }
   }
   const top=[...weights].sort((a,b)=>b[1]-a[1]).slice(0,4),sum=top.reduce((s,v)=>s+v[1],0);
   if(!sum)top.push(['hips',1]);
@@ -83,5 +105,5 @@ export function bindBlankBody(original:T.Mesh,hair:T.Group){
   mesh.updateWorldMatrix(true,true);skeleton.update();mesh.boundingBox=null;mesh.boundingSphere=null;
  };
  const inspect=()=>({bones:bones.length,vertices:g.attributes.position.count,pose:current,skinned:mesh.isSkinnedMesh});
- return {mesh,skeleton,bones:named,setPose,inspect};
+ return {mesh,skeleton,bones:named,setPose,setHandCurl,inspect,bodyHeight};
 }

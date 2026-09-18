@@ -15,14 +15,17 @@ export default function Home3DView({value,onChange,onBack,character,parts:previe
  const [editor,setEditor]=useState<HomeEditor>(),[parts,setParts]=useState<Parts>(),[residentError,setResidentError]=useState('');
  const [residentAssets,setResidentAssets]=useState<Record<string,string>>({});
  const residentHair=useMemo(()=>({...hair,layers:hair?.layers??{},extras:hair?.extras??[],assets:hair?.assets??residentAssets}),[hair,residentAssets]);
+ const previousAppearance=useRef<{parts:Parts;style:string}>();
  const [extraItems,setExtraItems]=useState<unknown[]>(),[creatorReady,setCreatorReady]=useState(false);
  const savedState=character?.chibiStudio?.room?.state??character?.chibiStudio?.vr?.state;
  useEffect(()=>{let cancelled=false;if(!savedState)return;loadCreatorPartsForRender().then(items=>{if(!cancelled)setExtraItems(items.map(p=>({...p,categoryKey:p.categoryKey})));}).catch(()=>{if(!cancelled)setResidentError('自定义素材读取失败，请退出小屋重试。');});return()=>{cancelled=true};},[savedState]);
  useEffect(()=>{let cancelled=false;if(!editor||suspended||!(previewParts||parts))return;
-  createVisitor((previewParts||parts)!,residentHair).then(visitor=>{if(cancelled)visitor.dispose();else {editor.setVisitor?.(visitor);setResidentError('');}}).catch(e=>{if(!cancelled)setResidentError(String(e));});
-  return()=>{cancelled=true;editor.setVisitor?.(null)};
+  const currentParts=(previewParts||parts)!,{headSize,bodyHeight,...style}=residentHair,signature=JSON.stringify(style);
+  createVisitor(currentParts,residentHair).then(visitor=>{if(cancelled)visitor.dispose();else {const previous=previousAppearance.current;editor.setVisitor?.(visitor,{preservePose:previous?.parts===currentParts&&previous.style===signature});previousAppearance.current={parts:currentParts,style:signature};setResidentError('');}}).catch(e=>{if(!cancelled)setResidentError(String(e));});
+  return()=>{cancelled=true};
  },[editor,previewParts,parts,residentHair,suspended]);
- useEffect(()=>{editor?.setSuspended?.(suspended);},[editor,suspended]);
+ useEffect(()=>{editor?.setSuspended?.(suspended);if(suspended)editor?.setVisitor?.(null);},[editor,suspended]);
+ useEffect(()=>()=>{editor?.setVisitor?.(null);},[editor]);
  const [error,setError]=useState('');save.current=onChange;back.current=onBack;
  useEffect(()=>{
   let cancelled=false,editor:{dispose:()=>void}|undefined;const controller=new AbortController();

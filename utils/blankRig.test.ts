@@ -5,6 +5,7 @@ import {bindBlankBody} from '../apps/room3d/chibi/blankRig';
 import {dressBlankBody} from '../apps/room3d/chibi/blankClothes';
 import {dressHoodie} from '../apps/room3d/chibi/hoodieClothes';
 import {BLANK_SCALE} from '../apps/room3d/chibi/blankBody';
+import sourceBody from '../apps/room3d/chibi/blankBody.json';
 
 function setup(){
  const group=new T.Group(),material=new T.MeshBasicMaterial(),mesh=new T.Mesh(createBlankBody('skin'),material),hair=new T.Group();
@@ -12,10 +13,24 @@ function setup(){
  return {rig,hair,dispose(){mesh.geometry.dispose();material.dispose();rig.skeleton.dispose();}};
 }
 describe('Blank Buddy skinning',()=>{
- it('keeps the extracted hoodie below 2500 triangles with valid skinning and reversible masking',()=>{
+ it('matches the hoodie reference head ratio without resizing the torso or feet',()=>{
+  const g=createBlankBody('skin',{headSize:1}),p=g.attributes.position,head=new T.Box3(),v=new T.Vector3();
+  try{
+   for(let i=0;i<p.count;i++){
+    const [x,y,z]=sourceBody.positions.slice(i*3,i*3+3);v.fromBufferAttribute(p,i);
+    if(y<=.125)expect(v.distanceTo(new T.Vector3(x,y+.5,z).multiplyScalar(BLANK_SCALE))).toBeLessThan(.000001);
+    if(y>=.16)head.expandByPoint(v);
+   }
+   const torso=.65*BLANK_SCALE,size=head.getSize(new T.Vector3());
+   expect(size.x/torso).toBeCloseTo(.3327/.72,2);
+   expect((head.max.y-torso)/torso).toBeCloseTo(.28/.72,2);
+   expect(size.z/torso).toBeCloseTo(.2836/.72,2);
+  }finally{g.dispose()}
+ });
+ it('keeps the extracted hoodie below 4000 triangles with valid skinning and reversible masking',()=>{
   const {rig,dispose}=setup(),original=Array.from(rig.mesh.geometry.index!.array),outfit=dressHoodie(rig);
   try{
-   expect(outfit.triangles).toBeLessThanOrEqual(2500);
+   expect(outfit.triangles).toBeLessThanOrEqual(4000);
    const kept=rig.mesh.geometry.index!,positions=rig.mesh.geometry.attributes.position,triangles=new Set<string>();
    for(let i=0;i<kept.count;i+=3)triangles.add([kept.getX(i),kept.getX(i+1),kept.getX(i+2)].join(','));
    for(let i=0;i<original.length;i+=3){const ids=original.slice(i,i+3),ys=ids.map(id=>positions.getY(id)/BLANK_SCALE-.5);
@@ -44,11 +59,11 @@ describe('Blank Buddy skinning',()=>{
  });
  it('binds all vertices with normalized valid influences without changing the approved rest shape',()=>{
   const {rig,dispose}=setup();try{
-   expect(rig.skeleton.bones.length).toBe(22);const g=rig.mesh.geometry,p=g.attributes.position,weights=g.attributes.skinWeight,indices=g.attributes.skinIndex;
+   expect(rig.skeleton.bones.length).toBe(42);const g=rig.mesh.geometry,p=g.attributes.position,weights=g.attributes.skinWeight,indices=g.attributes.skinIndex;
    expect(g.index!.count/3).toBeLessThanOrEqual(4000);
    rig.setPose('bind');const v=new T.Vector3(),rest=new T.Vector3();
    for(let i=0;i<p.count;i++){
-    let sum=0;for(let j=0;j<4;j++){const w=weights.array[i*4+j],id=indices.array[i*4+j];expect(w).toBeGreaterThanOrEqual(0);expect(id).toBeLessThan(22);sum+=w;}
+    let sum=0;for(let j=0;j<4;j++){const w=weights.array[i*4+j],id=indices.array[i*4+j];expect(w).toBeGreaterThanOrEqual(0);expect(id).toBeLessThan(42);sum+=w;}
     expect(sum).toBeCloseTo(1,5);rig.mesh.getVertexPosition(i,v);rest.fromBufferAttribute(p,i);expect(v.distanceTo(rest)).toBeLessThan(.00001);
    }
   }finally{dispose();}

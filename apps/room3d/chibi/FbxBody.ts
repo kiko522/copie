@@ -1,12 +1,13 @@
 import {bindBlankBody} from './blankRig';
-import {createBlankBody,BLANK_HAIR_Y_SCALE,BLANK_HAIR_PIVOT,BLANK_HAIR_Z_SCALE} from './blankBody';
+import {createBlankMotion} from './blankMotion';
+import {createBlankBody,BLANK_HAIR_Y_SCALE,BLANK_HAIR_PIVOT,BLANK_HAIR_Z_SCALE,BLANK_HEAD_SCALE,fitBlankHeadY} from './blankBody';
 import {eatingHand} from '../diningMotion.js';
 import {rhythmFrame} from '../rhythm.js';
 import type {ActivityPose} from './types';
 import * as T from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import type { Parts, Motion, Posture } from './types';
-import {defaultHairLayer,hairMode,type HairSettings} from './types';
+import {defaultHairLayer,hairMode,bodyProportions,type HairSettings} from './types';
 import { clothingCanvas,composeGarments } from './partSurfaces';
 import referenceUrl from './reference.fbx?url';
 import {hairContours,createHairShell} from './hairShell';
@@ -337,14 +338,20 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
     let rig:ReturnType<typeof bindBlankBody>|undefined;
     if(blank){
         const mesh=body.getObjectByName('chibi-body') as T.Mesh;
-        mesh.geometry=keep(createBlankBody(appearance));
-        hairPivot.position.y=BLANK_HAIR_PIVOT;
-        hairPivot.scale.set(1,BLANK_HAIR_Y_SCALE,BLANK_HAIR_Z_SCALE);
+        const {headSize}=bodyProportions(hair);
+        mesh.geometry=keep(createBlankBody(appearance,hair));
+        hairPivot.position.y=fitBlankHeadY(BLANK_HAIR_PIVOT,hair);
+        hairPivot.scale.set(BLANK_HEAD_SCALE.x*headSize,BLANK_HAIR_Y_SCALE*BLANK_HEAD_SCALE.y*headSize,BLANK_HAIR_Z_SCALE*BLANK_HEAD_SCALE.z*headSize);
         rig=bindBlankBody(mesh,hairPivot);keep(rig.skeleton);
     }
     const smooth=(a:number,b:number,v:number)=>T.MathUtils.smoothstep(v,a,b);
+    const blankAnimate=rig?createBlankMotion(rig,body):undefined;
     const animate=(time:number,motion:Motion,posture:Posture='standing',activity?:ActivityPose)=>{
-        if(blank)return;
+        if(blankAnimate){
+            blankAnimate(time,motion,posture);
+            front.map=motion==='sleep'?asleepMap:motion==='wave-cute'?cuteMap:awakeMap;
+            return;
+        }
         const cute=motion==='wave-cute',calm=motion==='wave-calm'||motion==='wave';
         const sleeping=motion==='sleep',angry=motion==='angry',sitting=posture==='seated'||motion==='sit';
         const floatingLimbs=sitting||!!activity||['wave','wave-cute','wave-calm','angry','dance','water'].includes(motion);

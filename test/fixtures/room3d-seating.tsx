@@ -7,7 +7,6 @@ import {createHome,findPlace} from '../../apps/room3d/model.js';
 import '../../apps/room3d/editor.css';
 import {seatTransform} from '../../apps/room3d/seating.js';
 import * as THREE from 'three';
-import {dressHoodie} from '../../apps/room3d/chibi/hoodieClothes';
 function Check(){
  const [request,setRequest]=useState(0);
  return <><div id="home"/><CreatorRollBridge request={request} onReady={()=>setRequest(1)} onError={message=>{throw Error(message)}} onResult={async result=>{
@@ -18,8 +17,8 @@ function Check(){
   const editor=await mountHomeEditor(document.querySelector('#home')!,{assetBase:new URL('/room3d/',location.href).href,initialState:home});
   const useNewBody=new URLSearchParams(location.search).has('newBody');
   const parts=await decodeParts(result),visitor=await createVisitor(parts,useNewBody?{bodyShape:'blank',layers:{},extras:[]}:undefined);
-  if(useNewBody&&visitor.rig){const outfit=dressHoodie(visitor.rig),dispose=visitor.dispose;visitor.dispose=()=>{outfit.resources.forEach(r=>r.dispose());dispose();};}
   editor.setVisitor!(visitor);
+  w.updateProportions=async(proportions:{headSize:number;bodyHeight:number})=>{const next=await createVisitor(parts,{bodyShape:'blank',layers:{},extras:[],...proportions});editor.setVisitor!(next,{preservePose:true});w.__visitor=next;editor.advanceTime!(0);};
   if(useNewBody){
    const panel=document.createElement('aside');panel.setAttribute('aria-label','角色大小控制器');
    panel.style.cssText='position:fixed;right:18px;top:100px;z-index:1000;width:230px;box-sizing:border-box;padding:14px;background:#fff8f1f5;color:#5d5067;border:1px solid #d7cbdc;border-radius:12px;box-shadow:0 4px 20px #30203018;font:14px sans-serif';

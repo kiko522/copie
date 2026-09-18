@@ -68,10 +68,12 @@ export async function mountHomeEditor(host,{assetBase,initialState,onChange,onBa
  const furnitureHalo=createFurnitureHalo(renderer,scene,camera);
  function renderScene(){const reset=renderer.info.autoReset;renderer.info.autoReset=false;renderer.info.reset();try{if(furnitureStyle==='retro'&&furnitureOutlineEnabled){const ids=new Set(state.rooms.flatMap(r=>r.items).filter(i=>!asset(i.assetId)?.building).map(i=>i.id));furnitureHalo.render(objects.filter(o=>ids.has(o.userData.itemId)));}else renderer.render(scene,camera);}finally{renderer.info.autoReset=reset;}}
  const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=false;controls.enablePan=true;controls.screenSpacePanning=true;controls.target.set(0,2,0);
+ let residentFraming=false;
+ controls.addEventListener('start',()=>{residentFraming=false});
  controls.addEventListener('change',()=>{dirty=true;wake();positionInteraction()});
  // Let the view descend to almost eye level, including when focused on a
  // short resident, instead of stopping at the old steep room overview.
- controls.minPolarAngle=.5;controls.maxPolarAngle=Math.PI/2-.015;controls.minZoom=.6;controls.maxZoom=6;
+ controls.minPolarAngle=.5;controls.maxPolarAngle=Math.PI/2-.015;controls.minZoom=.6;controls.maxZoom=10;
  // Warm daylight from the open side, with a restrained cool frontal fill.
  // Keep the resident's no-self-shadow treatment; shape comes from light direction.
  const hemi=new THREE.HemisphereLight('#fff4e7','#c4bbd0',1.45);scene.add(hemi);
@@ -168,13 +170,16 @@ export async function mountHomeEditor(host,{assetBase,initialState,onChange,onBa
   if(spot)resident.position.fromArray(spot);
   resident.visible=!!spot&&!overview;
  }
- function setVisitor(next){
-  closeInteraction();
-  putPlushBack();
-  walking=null;visitorLocation=null;visitorActivity=null;gamingEffects.clear();kitchenEffects.updateMeal(null,0);
-  visitor?.dispose();visitor=next;resident.clear();resident.add(watering.root,kitchenEffects.meal,plushRoot);visitorPlant=null;visitorSeat=null;visitorMotion='idle';visitorStart=elapsed;visitorUntil=0;
+ function setVisitor(next,{preservePose=false}={}){
+  preservePose=!!(preservePose&&visitor&&next);
+  if(!preservePose){
+   closeInteraction();putPlushBack();
+   walking=null;visitorLocation=null;visitorActivity=null;gamingEffects.clear();kitchenEffects.updateMeal(null,0);
+   visitorPlant=null;visitorSeat=null;visitorMotion='idle';visitorStart=elapsed;visitorUntil=0;
+  }
+  visitor?.dispose();visitor=next;resident.clear();resident.add(watering.root,kitchenEffects.meal,plushRoot);
   if(visitor){resident.add(visitor.root);visitor.animate(0,'idle');visitor.root.updateWorldMatrix(true,true);const bounds=new THREE.Box3();visitor.root.traverse(o=>{if(o.isMesh&&o.name==='chibi-body')bounds.union(new THREE.Box3().setFromObject(o));});headWidth=bounds.isEmpty()?1.5:Math.max(1.5,bounds.getSize(new THREE.Vector3()).x+.08);}
-  if(state){placeVisitor();dirty=true;wake();renderUI();}
+  if(state){if(preservePose){animateVisitor(elapsed-visitorStart);if(residentFraming)focusResident();}else placeVisitor();dirty=true;wake();renderUI();}
  }
  const selection=new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(Array.from({length:4},()=>new THREE.Vector3())),new THREE.LineBasicMaterial({color:0x9d80bd,transparent:true,opacity:.6,depthTest:false}));
  selection.setFromObject=o=>{const b=new THREE.Box3().setFromObject(o),p=selection.geometry.attributes.position,y=b.min.y+.025;[[b.min.x,b.min.z],[b.max.x,b.min.z],[b.max.x,b.max.z],[b.min.x,b.max.z]].forEach(([x,z],i)=>p.setXYZ(i,x,y,z));p.needsUpdate=true;selection.geometry.computeBoundingSphere()};selection.renderOrder=9;selection.visible=false;scene.add(selection);
@@ -319,7 +324,7 @@ export async function mountHomeEditor(host,{assetBase,initialState,onChange,onBa
   let span=multi?Math.max(extent.x*.9+extent.z*.7,extent.y*1.25+extent.z*.5)+2:14.4;
   const height=Math.max(span,span/ratio);camera.left=-height*ratio/2;camera.right=height*ratio/2;camera.top=height/2;camera.bottom=-height/2;
   camera.setViewOffset(size.w,size.h,0,Math.round(size.h*.045),size.w,size.h);
-  if(fit){const center=multi?box.getCenter(new THREE.Vector3()):new THREE.Vector3(0,2,0);controls.target.copy(center);camera.position.copy(center).add(new THREE.Vector3(9,8,12).multiplyScalar(multi?Math.max(1,extent.length()/12):1));camera.far=Math.max(200,extent.length()*4+50);camera.zoom=1;}
+  if(fit){residentFraming=false;const center=multi?box.getCenter(new THREE.Vector3()):new THREE.Vector3(0,2,0);controls.target.copy(center);camera.position.copy(center).add(new THREE.Vector3(9,8,12).multiplyScalar(multi?Math.max(1,extent.length()/12):1));camera.far=Math.max(200,extent.length()*4+50);camera.zoom=1;}
   camera.updateProjectionMatrix();renderer.setSize(size.w,size.h);controls.update();if(interaction)renderInteraction();
  }
  function selectedPanel(){
@@ -409,7 +414,7 @@ export async function mountHomeEditor(host,{assetBase,initialState,onChange,onBa
    // behind a nearby table or the bed's footboard. Orbit remains freely movable.
    offset.y=distance*(visitorSeat?.bed?.75:heldPlush?.55:.045);
    const jumping=visitorActivity?.kind==='rhythm';controls.target.copy(resident.position).add(new THREE.Vector3(0,jumping?1.6:.85,0));camera.position.copy(controls.target).add(offset);camera.zoom=jumping?1.8:2.4;
-   camera.updateProjectionMatrix();controls.update();panel=null;dirty=true;wake();renderUI();return;
+   camera.updateProjectionMatrix();controls.update();if(!jumping){focusResident();return;}panel=null;dirty=true;wake();renderUI();return;
   }
   if(d.action==='room-view'){resize(true);panel=null;renderUI();return}
   if(d.action==='panel'&&d.panel==='chibi'){panel=panel==='chibi'?null:'chibi';edit=false;overview=false;selected=null;rebuild();renderUI();return}
@@ -455,7 +460,7 @@ export async function mountHomeEditor(host,{assetBase,initialState,onChange,onBa
   if(d.action==='panel'){panel=panel===d.panel?null:d.panel;if(['furniture','storage','building','room-style'].includes(panel)){stopWalking();edit=true;overview=false;controls.enabled=true;rebuild()}renderUI();return}
   if(d.action==='deselect'){selected=null;panel=null;updateSelection();renderUI();return}
   if(d.action==='palette'){panel=panel==='palette'?'selected':'palette';renderUI();return}
-  if(d.action==='zoom'){camera.zoom=Math.max(controls.minZoom,Math.min(controls.maxZoom,camera.zoom*Number(d.factor)));camera.updateProjectionMatrix();dirty=true;wake();return}
+  if(d.action==='zoom'){residentFraming=false;camera.zoom=Math.max(controls.minZoom,Math.min(controls.maxZoom,camera.zoom*Number(d.factor)));camera.updateProjectionMatrix();dirty=true;wake();return}
   if(d.action==='redo'){if(redo.length){undo.push(clone(state));state=redo.pop();stopWalking();visitorLocation=null;selected=null;panel=null;persist();rebuild();renderUI()}return}
   if(d.action==='undo'){if(undo.length){redo.push(clone(state));state=undo.pop();stopWalking();visitorLocation=null;selected=null;panel=null;persist();rebuild();renderUI()}return}
   if(d.action==='building-room'){stopWalking();visitorLocation=null;activateRoom(state.rooms.find(r=>r.id===d.id));selected=null;persist();rebuild();renderUI();return}
@@ -584,8 +589,8 @@ export async function mountHomeEditor(host,{assetBase,initialState,onChange,onBa
   const center=box.getCenter(new THREE.Vector3()),offset=camera.position.clone().sub(controls.target);
   controls.target.copy(center);camera.position.copy(center).add(offset);controls.update();camera.updateMatrixWorld(true);
   const projected=box.clone().applyMatrix4(camera.matrixWorldInverse).getSize(new THREE.Vector3());
-  camera.zoom=THREE.MathUtils.clamp(Math.min((camera.right-camera.left)*.58/Math.max(.1,projected.x),(camera.top-camera.bottom)*.62/Math.max(.1,projected.y)),controls.minZoom,controls.maxZoom);
-  camera.clearViewOffset();camera.updateProjectionMatrix();panel=null;selected=null;updateSelection();dirty=true;wake();renderUI();
+  camera.zoom=THREE.MathUtils.clamp(Math.min((camera.right-camera.left)*.72/Math.max(.1,projected.x),(camera.top-camera.bottom)*.78/Math.max(.1,projected.y)),controls.minZoom,controls.maxZoom);
+  residentFraming=true;camera.clearViewOffset();camera.updateProjectionMatrix();panel=null;selected=null;updateSelection();dirty=true;wake();renderUI();
  }
  function down(e){
   activePointers.add(e.pointerId);

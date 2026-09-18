@@ -1,6 +1,9 @@
 import React,{useEffect,useRef,useState} from 'react';
 import * as T from 'three';
 import {buildBody,loadBody} from './FbxBody';
+import {dressHoodie} from '../../apps/room3d/chibi/hoodieClothes';
+import {BLANK_SCALE} from '../../apps/room3d/chibi/blankBody';
+import {NEW_BODY_HOME_PERCENT} from '../../apps/room3d/chibi/visitor';
 import type {HairSettings,Parts,Motion} from '../../apps/room3d/chibi/types';
 export type {Parts,Motion};
 export function Puppet({parts,yaw,motion,wire,playing,appearance='outfit',hair}:{hair?:HairSettings;parts:Parts;yaw:number;motion:Motion;wire:boolean;playing:boolean;appearance?:'skin'|'hair'|'outfit'}){
@@ -35,7 +38,7 @@ export function Puppet({parts,yaw,motion,wire,playing,appearance='outfit',hair}:
   const visibility=()=>{previous=0;if(document.hidden){cancelAnimationFrame(frame);frame=0;}else schedule();};document.addEventListener('visibilitychange',visibility);
   return()=>{disposed=true;cancelAnimationFrame(frame);observer.disconnect();document.removeEventListener('visibilitychange',visibility);wake.current=()=>{};scene.current=undefined;floor.geometry.dispose();floor.material.dispose();renderer.dispose();renderer.domElement.remove();};
  },[]);
- useEffect(()=>{if(!source||!scene.current)return;let next:ReturnType<typeof buildBody>|undefined;try{next=buildBody(source,parts,appearance,hair);rig.current=next;scene.current.add(next.root);setError('');wake.current();}catch(e){setError(String(e));}return()=>{next?.root.removeFromParent();next?.resources.forEach(r=>r.dispose());if(rig.current===next)rig.current=undefined;};},[source,parts,appearance,hair]);
+ useEffect(()=>{if(!source||!scene.current)return;let next:ReturnType<typeof buildBody>|undefined;try{next=buildBody(source,parts,appearance,hair);if(next.rig){if(appearance==='outfit'){const outfit=dressHoodie(next.rig);next.resources.push(...outfit.resources);}next.root.scale.setScalar(1.4/BLANK_SCALE*(NEW_BODY_HOME_PERCENT/100));}rig.current=next;scene.current.add(next.root);setError('');wake.current();}catch(e){setError(String(e));}return()=>{next?.root.removeFromParent();next?.resources.forEach(r=>r.dispose());if(rig.current===next)rig.current=undefined;};},[source,parts,appearance,hair]);
  useEffect(()=>{wake.current();},[yaw,motion,wire,playing]);
  return <div ref={host} className="puppet">{error&&<p role="alert">{error}</p>}{!source&&!error&&<p>正在加载小人…</p>}</div>;
 }

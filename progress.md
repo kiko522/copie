@@ -1248,3 +1248,60 @@ TODO — Qixi rewrite
 - Scope caveat: new body home sitting/walking animations remain unimplemented on incoming branch; existing classic body remains default. Wardrobe and FK editor are isolated prototypes.
 - Validation: 20 files / 129 room3d + rig tests passed. Experiment production build passed; fixture build passed with esnext for the existing top-level await fixture (initial default-target fixture build rejected top-level await). Existing bundle size advisory remains.
 - Browser: desktop and phone portrait/landscape furniture-action QA passed; synchronized the landscape test with canvas resize after an initial stale-projection timeout. Retro/original and outline toggles preserve room state; Clear is 1.5x; independent pillow paint works. New rig fixture reports 3900 triangles, 1952 vertices, 22 bones, 944px face atlas; raised-arm preset rendered. Screenshots inspected, no page/shader errors. Reports in output/merge-20260918 and output/showrooms.
+
+2026-09-18 — New-body basic motion trial
+- User asked to try making the new body move, then asked about open animation libraries. Verified official Quaternius Universal Animation Library (CC0, free subset / paid extras) and Three.js retargetClip documentation. No external clips downloaded; authored small FK calibration poses first.
+- Added blankMotion.ts: natural arms-down idle, elbow/wrist wave, cute wave/head tilt, bent-hip/knee sitting, seated upper-body emotes with fixed seat contact, gentle walk, nod/sway and basic whole-body lying. Bone lengths, scale and geometry are unchanged. Original round chibi animation branch is untouched.
+- New-body visitors wear the existing geometry-only hoodie/sock/boot outfit on the same skeleton; removed duplicate clothing from the seating fixture. Rig-only/skin comparison editor remains separate. Per-avatar disposal owns clothing resources.
+- 132 tests across 21 files passed, including new planted-feet, rigid bone length, seated pelvis/wave, stand reset and finite skinned-clothing checks. Experiment + seating production build passed (existing chunk warning). Browser UI exercised stand, wave, real chair/sofa action menu, seated wave, camera rotation; screenshots inspected. Skill game client passed and screenshot/state inspected. Reports/screenshots: output/new-body-motion; reusable QA: art/jellyfish-home/new-body-motion-qa.mjs.
+- Limitations: no external animation-pack import yet; no walk-to-seat approach sequence, full IK, device-specific hand contacts, or new-body full furniture certification. High-raised hoodie sleeves still need weights cleanup. Existing unrelated chat/memory work preserved.
+
+2026-09-18 — Seated hands at the sides
+- User requested both hands naturally hanging beside the body when seated. Removed forward-reaching seated shoulder/elbow angles; left sleeve clearance and relaxed wrists. Upper-body waving still overrides only the waving side; idle restores the seated rest pose. Legs/contact height unchanged.
+- Existing three blankMotion tests passed. Expanded browser QA with front seated view and return-to-idle/stand checks; initial software-WebGL run timed out after the final panel click, so the isolated QA uses eco quality and a 60s action timeout. Seated front screenshot visually confirms hands at the sides.
+- Final browser rerun passed seated wave → idle → stand; skill game client completed and screenshot reviewed. No browser errors.
+
+
+2026-09-18 — Hoodie reference proportions, shoulders and closer focus
+- User confirmed matching the supplied Blush Hoodie Doll head/body ratio. Measured both normalized meshes; kept torso/limbs and bone lengths, fitted head at the neck and scaled hair with it. Added a regression check for reference ratios and unchanged torso/feet.
+- Re-extracted geometry-only hoodie at 2,615 triangles + 669 boots (3,284 total, below 4,000 outfit budget). Smoothed shoulder transfer with continuous garment-space influences; masked covered upper-body faces as one region to avoid leftover skin strips. No image textures.
+- Raised wave now nearly straight, angled outward with wrist motion. Tests check elbow alignment and wrist clearance from the bare head; seated hands still rest beside the body. No general hair collision/IK solver added.
+- Camera maximum zoom 10; focus and crouched view fit actual actor bounds more closely.
+- Validation: 10 rig/motion tests passed; full UI stand → wave → sofa → seated wave → rest → stand passed with no browser errors. Stand/wave/seated screenshots inspected; skill client screenshot/state inspected. Three-entry standalone Vite build passed (existing large-chunk advisory). Fixture: test/fixtures/chibi-shoulder.html; local reference preview is opt-in.
+- Final regression: 21 files / 134 tests passed with --no-cache (normal run hit a pre-existing results-cache EPERM after all tests passed). Front/side/back shoulder comparisons inspected; no remaining skin strips at the shoulder seam in these poses.
+
+
+2026-09-18 — Face smoothing and independent body proportion sliders
+- User requested smoother mouth region and editable head size/height. Added cached depth-only lower-face relaxation, preserving vertex/triangle count, silhouette and face UVs.
+- Added headSize (75–140%) and bodyHeight (80–125%) to HairSettings, default 100% of hoodie reference. Height changes torso/legs and bind joint positions/clothes, not head shape; seated hips retain a fixed contact plane.
+- Added reusable BodyControls in Little World’s “调整比例” popover and creator 3D settings. Grouped pointer/keyboard changes, undo/redo, proportion-only reset and local persistence; fixed stale “待绑骨” copy. Creator previews now fit and dress the new body consistently with the home view.
+- Keep old avatar until replacement is ready. Proportion-only replacement preserves actions/seat/location; focused camera re-fits the changed silhouette so taller heads are not cropped. Manual camera controls cancel automatic framing.
+- Targeted tests cover mouth curvature reduction, unchanged topology/UVs, old/invalid saved data, independent dimensions, extreme-proportion bind/pose finite coordinates and seated contact. Browser verifies both sliders, undo/redo/reset, reload persistence and creator/phone UI. No AI textures or extra triangles added.
+- Final verification: 22 files / 137 tests passed with --no-cache; three-entry Vite build passed (existing bundle warning). Real sofa interaction survived changing to 130% head / 80% height while seated, then seated wave and stand passed without browser errors. Desktop/mobile/creator controls and skill-client screenshot/state inspected. Mobile proportion panel moved below the scene to preserve the view.
+
+
+2026-09-18 — User reverted mouth smoothing, default head 104%
+- Removed cached facial depth relaxation; restored the original source facial relief and retained existing normals/UVs. Default and reset head size now 104%, height remains 100%; explicit saved proportions remain unchanged. Updated geometry/default/reset regressions and browser QA.
+- Verified 13 rig/motion/proportion tests passed after the revert; no whole-repo rollback and no existing custom saved proportions overwritten.
+
+2026-09-18 — Five fingers, straight wrists and lower-face profile
+- Rebuilt from geometry-only Tiny T-Pose 0918044240 reference with connected procedural five-finger hands. User rejected wrist pinches and a separate nose tip: wrists now continue forearm width; only the broad mouth-to-chin profile is pushed outward. No facial depth-relaxation restored, default head stays 104%.
+- Body is 1,885 vertices / 3,766 triangles, one closed connected surface. Offline source normals retained and transformed correctly with head/height changes. Outfit remains 3,284 triangles. Fingers currently follow the hand bone, no individual finger rig.
+- Validation: 15 geometry/rig/motion/proportion tests passed; three-entry Vite build passed (existing chunk-size advisory). Inspected profile, face, wrist/hand and skill-client screenshot/state. Browser stand/wave/seat/proportion change/seated wave/stand passed with no errors on stable rerun; first run was interrupted by development HMR during a source comment edit.
+- Comparison preview: output/body-refinement/index.html; rebuild tool: art/chibi/refine-body.mjs. Original reference GLB and unrelated chat/memory changes untouched. No commit/push.
+
+2026-09-18 — Independent finger rig
+- Added two joints per digit on both hands, appending 20 bones after the original 22. Capsule-local weights keep neighboring tips and wrists independent; mesh/topology unchanged. Shared hand-curl API drives natural rest, open waving hand and angry fists without stretching bones.
+- Pose editor lists localized finger joints, smaller joint handles, open/relaxed/fist presets; persistence/import/export retain finger rotations. Existing body-only drafts remain valid. Added chibi-fingers preview with three hand poses, side toggle and skeleton toggle.
+- Validation: 18 relevant tests pass; isolated 3-entry Vite build passes (existing large chunk advisory). Skill-client left/right hand screenshots and text inspected. Browser confirms 42 options, individual finger edit, reload, pose JSON roundtrip and 42-joint GLB export; no page errors. First QA assertion was corrected to tolerate equivalent numeric -0/0 after opening a hand.
+- Finger posing is FK, not collision-aware grasping/IK; low-poly knuckle contours are still visible at extreme closure. No additional model faces or image textures, no commit/push; unrelated user changes preserved.
+
+2026-09-18 — Incoming clothing pack classification
+- Inspected Meshy_AI_assets_20260918_090720.zip: 10 full-figure GLBs, no image textures or skins; 01/02 have 9/5 mesh parts, others single meshes. Original whole-figure counts range 123,992–631,792 triangles. Original archive untouched; extracted files and pure-color three-view renders in output/clothing-pack-0918.
+- Registered source folder IDs and six garment families in art/chibi/clothing-pack-0918.json; detailed categories and extraction/rigging contract in docs/chibi-clothing-assets.md. Reuse 01/02 camisoles/footwear; group 09/10 fitted knit, 04/05/08 loose knit, 01/02/06/07 trousers. Off-shoulder/open-front and collar changes remain structural variants, not direct morphs between unrelated topology.
+- User asked whether to remove the people first: no wholesale re-export needed; exploit existing parts then inspect fused openings individually. This is classification/reference intake, NOT yet stripped/rigged wearable assets; manifest status explicitly extraction-preview. Next: garment-only extraction, <=4000 triangles per item, body masks and actual motion validation before catalog integration. No runtime defaults or user wardrobe changed.
+
+2026-09-18 — User-requested clothing work rollback / checkpoint
+- Stopped unfinished clothing implementation at the user's request. Removed the new extraction script, wardrobe runtime, garment JSON outputs, try-on fixture, associated draft tests and generated try-on captures. Retained source inventory, reference renders, six-family selection manifest and clothing requirements only.
+- Earlier completed body proportions, five-finger rig, motions and hoodie work remain intact. Clothing pack remains extraction-preview, not production-ready; no new wardrobe resources are required by the app. Unrelated chat/memory edits remain outside this checkpoint.
+- Checkpoint validation: 5 relevant test files / 18 tests passed; isolated chibi experiment, fingers and shoulder Vite build passed (existing large-chunk advisory). No runtime references to removed clothing-pack drafts remain.

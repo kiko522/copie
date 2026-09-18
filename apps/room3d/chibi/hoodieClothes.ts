@@ -6,20 +6,34 @@ import type {bindBlankBody} from './blankRig';
 /** Extracted Meshy garment, retargeted from its A-pose into the body's bind pose. */
 export function dressHoodie(rig:ReturnType<typeof bindBlankBody>){
  const body=rig.mesh.geometry,p=body.attributes.position,si=body.attributes.skinIndex,sw=body.attributes.skinWeight;
+ const boneIndex=Object.fromEntries(rig.skeleton.bones.map((b,i)=>[b.name,i]));
  const resources:Array<{dispose():void}>=[],meshes:T.SkinnedMesh[]=[];
  data.forEach((part,partIndex)=>{
   const positions:number[]=[],skinIndex:number[]=[],skinWeight:number[]=[];
   for(let i=0;i<part.positions.length;i+=3){
    const [x,y,z]=part.positions.slice(i,i+3),side=Math.sign(x),ax=Math.abs(x);
-   let tx=x*.94,ty=y*.82-.0207,tz=z*1.04;
+   let tx=x*.98,ty=y*.82-.0207,tz=z*1.07,sleeve=0;
    if(partIndex===0){
     const sleeveEdge=.095+.05*(1-T.MathUtils.smoothstep(y,-.14,-.07))-.035*T.MathUtils.smoothstep(y,.03,.13);
-    const blend=T.MathUtils.smoothstep(ax,sleeveEdge,sleeveEdge+.025);
+    // The hood stays on the chest; only the sleeve swings out of the source A-pose.
+    const blend=T.MathUtils.smoothstep(ax,sleeveEdge,sleeveEdge+.045)*(1-T.MathUtils.smoothstep(y,.135,.185));
     const angle=57*Math.PI/180,dx=ax-.068,dy=y-.135;
     const armX=side*(.063+dx*Math.cos(angle)-dy*Math.sin(angle)),armY=.090+(dx*Math.sin(angle)+dy*Math.cos(angle))*.95;
-    tx=T.MathUtils.lerp(tx,armX,blend);ty=T.MathUtils.lerp(ty,armY,blend);
+    ty+=.022*T.MathUtils.smoothstep(y,.015,.11);
+    tx=T.MathUtils.lerp(tx,armX,blend);ty=T.MathUtils.lerp(ty,armY,blend);sleeve=blend;
    }else{tx=x*.94;ty=y;tz=z;}
-   const v=new T.Vector3(tx,(ty+.5),tz).multiplyScalar(BLANK_SCALE);positions.push(v.x,v.y,v.z);
+   const v=new T.Vector3(tx,(ty+.5)*rig.bodyHeight,tz).multiplyScalar(BLANK_SCALE);positions.push(v.x,v.y,v.z);
+   if(partIndex===0){
+    // Smooth shoulder influences in garment space. Nearest-body transfer made
+    // adjacent loose-cloth vertices jump between chest/arm and even opposite arms.
+    const prefix=side>=0?'L':'R',elbow=T.MathUtils.smoothstep(Math.abs(tx),.18,.24),wrist=T.MathUtils.smoothstep(Math.abs(tx),.285,.326);
+    const spine=T.MathUtils.smoothstep(ty,-.12,-.035),chest=T.MathUtils.smoothstep(ty,-.025,.075);
+    const weights=[['hips',(1-sleeve)*(1-spine)],['spine',(1-sleeve)*spine*(1-chest)],['chest',(1-sleeve)*spine*chest],
+     [`${prefix}_upperArm`,sleeve*(1-elbow)],[`${prefix}_forearm`,sleeve*elbow*(1-wrist)],[`${prefix}_hand`,sleeve*elbow*wrist]] as [string,number][];
+    const top=weights.sort((a,b)=>b[1]-a[1]).slice(0,4),sum=top.reduce((s,[,w])=>s+w,0);
+    for(const [name,weight] of top){skinIndex.push(boneIndex[name]);skinWeight.push(weight/sum);}
+    continue;
+   }
    let nearest=0,distance=Infinity;
    for(let k=0;k<p.count;k++){const d=(p.getX(k)-v.x)**2+(p.getY(k)-v.y)**2+(p.getZ(k)-v.z)**2;if(d<distance){distance=d;nearest=k;}}
    for(let j=0;j<4;j++){let index=si.array[nearest*4+j];
@@ -44,8 +58,8 @@ export function dressHoodie(rig:ReturnType<typeof bindBlankBody>){
   for(let i=group.start;i<group.start+group.count;i+=3){const ids=[0,1,2].map(j=>original.getX(i+j));
    // All corners must belong to ONE covered region. A long simplified triangle
    // may span from shirt to boot while its middle is exposed thigh.
-   const regions=[(x:number,y:number)=>y<-.244,(x:number,y:number)=>y>-.126&&y<.122&&x<.10,(x:number,y:number)=>x>=.10&&x<.298&&y>.015&&y<.135];
-   const covered=regions.some(region=>ids.every(id=>region(Math.abs(p.getX(id))/BLANK_SCALE,p.getY(id)/BLANK_SCALE-.5)));
+   const regions=[(x:number,y:number)=>y<-.244,(x:number,y:number)=>y>-.126&&y<(x>.045?.151:.122)&&x<.298];
+   const covered=regions.some(region=>ids.every(id=>region(Math.abs(p.getX(id))/BLANK_SCALE,p.getY(id)/(BLANK_SCALE*rig.bodyHeight)-.5)));
    if(!covered)masked.push(...ids);
   }maskedGroups.push({start,count:masked.length-start,materialIndex:group.materialIndex});
  }

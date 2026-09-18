@@ -1,5 +1,6 @@
 import React,{useState,useEffect} from 'react';
 import {Puppet} from './Puppet';
+import {BodyControls} from './BodyControls';
 import {defaultHairLayer,hairMode,type HairSettings,type HairLayer,type Parts} from '../../apps/room3d/chibi/types';
 import './hair-editor.css';
 export function HairEditor({parts,hair,previewHair,assets,onChange,onUndo,onRedo,onReset,canUndo,canRedo,onBegin,onEnd}:{parts:Parts;hair:HairSettings;previewHair:HairSettings;assets:Record<string,string>;onChange:(v:HairSettings)=>void;onUndo:()=>void;onRedo:()=>void;onReset:()=>void;canUndo:boolean;canRedo:boolean;onBegin:()=>void;onEnd:()=>void}){
@@ -13,7 +14,8 @@ export function HairEditor({parts,hair,previewHair,assets,onChange,onUndo,onRedo
  return <div className="hair-editor">
   <div className="hair-preview"><Puppet parts={parts} hair={previewHair} yaw={yaw} motion="idle" wire={false} playing={false}/><label className="hair-angle">转一圈 <input aria-label="3D 预览转角" type="range" min={-180} max={180} value={yaw} onChange={e=>setYaw(+e.target.value)}/>{yaw}°</label></div>
   <div className="hair-options">
-   <label>身体比例 <select aria-label="身体比例" value={hair.bodyShape??'classic'} onChange={e=>onChange({...hair,bodyShape:e.target.value as 'classic'|'blank'})}><option value="classic">原版 · 圆润</option><option value="blank">Blank Buddy · 静态素体（待绑骨）</option></select></label>
+   <label>身体比例 <select aria-label="身体比例" value={hair.bodyShape??'classic'} onChange={e=>onChange({...hair,bodyShape:e.target.value as 'classic'|'blank'})}><option value="classic">原版 · 圆润</option><option value="blank">新模型 · 骨骼素体</option></select></label>
+   {hair.bodyShape==='blank'&&<BodyControls hair={hair} onChange={onChange} onBegin={onBegin} onEnd={onEnd}/>}
    <div className="hair-buttons"><button disabled={!canUndo} onClick={onUndo}>撤销</button><button disabled={!canRedo} onClick={onRedo}>重做</button><button onClick={onReset}>全部重置</button></div>
    <label>调整哪一层 <select value={selected} onChange={e=>setSelected(e.target.value)}>{[['fronthair','前发'],['earhair','耳发'],['back1','后发1'],['back2','后发2'],['outfit','衣服'],['outer','外套'],...hair.extras.map((e,i)=>[e.id,`额外发片 ${i+1}`])].map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
    {!clothing&&<label>素材分类 <select aria-label="素材分类" value={extra?.mode??hairMode({...hair,assets},selected)} onChange={e=>{const mode=e.target.value as 'wrap'|'project';if(extra||!assets[selected])update({mode});else onChange({...hair,assetModes:{...hair.assetModes,[assets[selected]]:mode}});}}><option value="wrap">贴头包裹</option><option value="project">向外伸出（马尾 / 啾啾 / 猫耳）</option></select></label>}
