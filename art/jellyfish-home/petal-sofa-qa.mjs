@@ -14,7 +14,7 @@ try{
  const page=await browser.newPage({viewport:{width:900,height:800}}),errors=[];page.on('pageerror',e=>errors.push(String(e)));await mkdir('output/sofa-review/installed',{recursive:true});
  await page.goto('http://127.0.0.1:5174/test/fixtures/room3d-building.html',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>window.__homeEditor);
  const click=(action,extra='')=>page.locator(`[data-action="${action}"]${extra}`).click(),inspect=()=>page.evaluate(()=>window.__homeEditor.inspect());
- await click('panel','[data-panel="furniture"]');await click('category','[data-value="seating"]');assert.equal(await page.locator('[data-id="petal_sofa"]').count(),1);assert.equal(await page.locator('[data-id="petal_armchair"]').count(),1);
+ await click('panel','[data-panel="furniture"]');await click('catalog-mode','[data-value="use"]');await click('category','[data-value="seating"]');assert.equal(await page.locator('[data-id="petal_sofa"]').count(),1);assert.equal(await page.locator('[data-id="petal_armchair"]').count(),1);
  await click('add-item','[data-id="petal_sofa"]');const first=await inspect(),id=first.selected;assert.ok(first.rooms[0].items.some(i=>i.id===id&&i.assetId==='petal_sofa'));assert.equal(first.message,'拖动试试新的位置');
  await page.screenshot({path:'output/sofa-review/installed/original-color.png'});
  // Clear the nearby table so a quarter-turn tests rotation without an expected collision.

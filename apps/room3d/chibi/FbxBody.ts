@@ -323,10 +323,11 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
         const jump=cute&&!sitting?Math.max(0,Math.sin(Math.min(1,Math.max(0,(beat-.18)/.75))*Math.PI))*.24:0;
         const crouch=cute&&!sitting&&beat<.18?Math.sin(beat/.18*Math.PI)*.045:0;
         const headTilt=cute?(-.10+Math.sin(time*3)*.035)*enter:sleeping?.055:angry?Math.sin(time*15)*.022:motion==='dance'?Math.sin(time*3)*.055:Math.sin(time*1.8)*.008;
-        const lying=sleeping&&!sitting;
+        const inBed=posture==='lying',lying=sleeping&&!sitting&&!inBed;
         body.position.set(lying?.94:0,lying?.98+Math.sin(time*1.8)*.012:jump-crouch,0);
         if(rhythm)body.position.fromArray(rhythm.offset);
-        body.rotation.set(0,0,sitting?0:lying?Math.PI/2-.10:angry?Math.sin(time*14)*.025:motion==='dance'?Math.sin(time*3)*.045:0);
+        body.rotation.set(inBed?-Math.PI/2:0,0,inBed||sitting?0:lying?Math.PI/2-.10:angry?Math.sin(time*14)*.025:motion==='dance'?Math.sin(time*3)*.045:0);
+        if(inBed)body.position.set(0,Math.sin(time*1.8)*.009,0);
         body.scale.set(1,lying?1+Math.sin(time*1.8)*.012:1,1);
         const headNod=sitting&&sleeping?.10+Math.sin(time*1.6)*.025:motion==='stream'?.025*Math.sin(time*3):motion==='eat'?.018+.018*Math.sin(time*4):0;
         hairPivot.rotation.z=headTilt;

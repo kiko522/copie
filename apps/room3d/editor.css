@@ -7,3 +7,63 @@
 .h3-wall-views{position:absolute;top:80px;left:72px;display:flex;gap:3px;padding:3px;background:#fff8f1e8;border-radius:18px}.h3-wall-views button{min-height:32px;padding:5px 9px;border-radius:14px;background:transparent;font-size:11px}.h3-wall-views button[aria-pressed=true]{background:#8973a9;color:#fff}.h3-sheet details{margin-top:15px;font-size:12px}.h3-sheet summary{cursor:pointer;padding:8px 0}.home3d .h3-history{top:124px;right:64px}@media(min-width:760px){.h3-wall-views{left:88px;top:100px}.home3d .h3-history{top:100px;right:22px}.h3-camera-tools{top:155px}}
 
 .h3-custom-color{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;font-size:12px;color:#786482}.h3-custom-color input{width:56px;height:34px;border:1px solid #dacbdd;border-radius:9px;padding:3px;background:#fff;cursor:pointer}.h3-object-bar .h3-swatches .reset{width:auto;padding:0 9px}
+.h3-catalog-modes{display:flex;gap:4px;padding:3px;border-radius:14px;background:#eee4ef}.h3-catalog-modes button{flex:1;padding:9px;border-radius:11px;background:transparent;font-size:12px}.h3-catalog-modes button[aria-pressed=true]{background:#8973a9;color:#fff}.h3-catalog-categories{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}.h3-catalog-categories button{padding:7px 3px;font-size:11px}.h3-asset{position:relative}.h3-asset .h3-action-badge{position:absolute;right:5px;top:5px;padding:3px 6px;border-radius:8px;background:#8973a9;color:white;font-size:9px;line-height:1.2;pointer-events:none}.h3-action-detail{display:block;margin-top:4px;font-weight:normal;font-size:10px;color:#8973a9}
+.h3-catalog-select{display:none}@media(max-width:759px){.h3-catalog-categories[data-mode=use]{display:none}.h3-catalog-select{display:flex;align-items:center;gap:12px;margin:12px 0;font-size:12px}.h3-catalog-select select{flex:1;min-width:0;border:1px solid #dfd2e1;border-radius:12px;padding:10px;background:#f5eef5;color:#534563;font:inherit}.h3-catalog-select select:focus-visible{outline:3px solid #917bb7}}
+
+
+/* Game HUD: a furniture-anchored action wheel, without a second canvas or render loop. */
+.h3-dock b svg{display:block;width:24px;height:24px;margin:auto}
+.h3-interaction{position:absolute;z-index:3;pointer-events:none;color:#665179}
+.h3-interaction[hidden]{display:none}
+.h3-interaction-glow{position:absolute;inset:-14px -16px -10px;border-radius:50%;background:radial-gradient(ellipse,#fff9f3e0 0%,#fff9f3b0 33%,#fff8f34d 57%,transparent 73%);animation:h3-wheel-in .28s ease-out both}
+.h3-interaction-arc{position:absolute;inset:0;width:100%;height:100%;overflow:visible;filter:drop-shadow(0 1px 2px #9a82ba55)}
+.h3-interaction-arc path{fill:none;stroke:#fffdfb;stroke-width:3;stroke-dasharray:7 6;stroke-linecap:round}
+.h3-interaction-caption{position:absolute;top:var(--hint-y);left:12%;right:12%;text-align:center;display:flex;align-items:center;flex-direction:column;gap:5px;text-shadow:0 1px 8px #fffcf5}
+.h3-interaction-caption>svg{width:31px;height:31px;color:#aa8cdb;fill:#dfcff76b}
+.h3-interaction-caption strong{font-size:16px;letter-spacing:.02em}
+.h3-interaction-caption span{font-size:11px;color:#81718f}
+.h3-interaction-caption small{font-size:9px;color:#8b7b94;margin-top:2px}
+.home3d .h3-interaction-close{position:absolute;right:10px;top:0;pointer-events:auto;width:32px;min-height:32px;border-radius:50%;background:#fff9f0bb;color:#8d7b9c;font-size:20px}
+.home3d .h3-interaction-choice{position:absolute;pointer-events:auto;transform:translate(-50%,-50%);width:94px;height:94px;min-height:0;padding:11px 7px 9px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:5px;border-radius:50%;background:linear-gradient(145deg,#fffdf8f5,#f6edf4f0);border:3px solid #fffdfa;color:#786387;font-size:12px;font-weight:600;line-height:1.3;box-shadow:0 5px 20px #88709829,inset 0 0 18px #fff8;animation:h3-action-unfold .3s cubic-bezier(.18,.8,.3,1.12) both;animation-delay:calc(var(--order)*55ms);transition:background .18s,color .18s,box-shadow .18s}
+.h3-interaction-choice>svg{width:33px;height:33px;flex-shrink:0;stroke-width:1.9}
+.h3-interaction-choice span{display:block;max-width:100%;font-size:inherit}
+.h3-interaction-choice small{font-size:9px;font-weight:400}
+.h3-interaction-choice i{position:absolute;font-style:normal;left:7px;top:12px;font-size:11px;color:#b7a3c7}
+.home3d .h3-interaction-choice[aria-disabled=true]{background:#eee8efed;color:#928695;border-color:#fff9;box-shadow:none}
+.home3d .h3-interaction-choice:not([aria-disabled=true]):is(:hover,:focus-visible){background:linear-gradient(140deg,#d6c4f5,#ad91d8);color:#fff;box-shadow:0 5px 26px #a18bc35c,inset 0 1px 14px #fff7;translate:0 -4px}
+.h3-interaction-choice:is(:hover,:focus-visible) i{color:#fff}
+.home3d .h3-interaction-choice:not([aria-disabled=true]):active{scale:.94;translate:0 0}
+.home3d .h3-interaction-more{position:absolute;bottom:-14px;left:50%;transform:translateX(-50%);pointer-events:auto;min-height:30px;white-space:nowrap;border-radius:18px;padding:4px 14px;background:#fff9f2ed;font-size:10px;color:#80668f;box-shadow:0 2px 8px #80668f15}
+.h3-interaction.is-compact .h3-interaction-choice{width:66px;height:66px;gap:1px;padding:6px;font-size:10px}
+.h3-interaction.is-compact .h3-interaction-choice>svg{width:23px;height:23px}
+.h3-interaction.is-compact .h3-interaction-caption{gap:2px}
+.h3-interaction.is-compact .h3-interaction-caption>svg{display:none}
+.h3-interaction.is-compact .h3-interaction-caption strong{font-size:12px}
+.h3-interaction.is-compact .h3-interaction-caption small{display:none}
+@keyframes h3-action-unfold{from{opacity:0;transform:translate(-50%,-20%) scale(.65)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+@keyframes h3-wheel-in{from{opacity:0;scale:.92}to{opacity:1;scale:1}}
+@media(min-width:1000px) and (min-height:640px){
+ .home3d .h3-dock{left:18px;top:174px;bottom:auto;transform:none;width:72px;max-height:calc(100% - 190px);display:flex;flex-direction:column;gap:3px;padding:10px 5px;border-radius:28px;overflow:auto;background:#fff8f0ca}
+ .home3d .h3-dock button{flex:none;width:100%;padding:9px 3px;border-radius:18px;font-size:11px}
+ .home3d .h3-dock button b{margin-bottom:5px}
+ .home3d .h3-status{left:108px;right:auto;bottom:20px;text-align:left}
+ .home3d .h3-status span{padding:12px 18px}
+}
+@media(max-width:599px){
+ .home3d .h3-interaction-choice{width:76px;height:76px;padding:7px 5px;font-size:10px;gap:3px;border-width:2px}
+ .h3-interaction-choice>svg{width:27px;height:27px}
+ .h3-interaction-caption strong{font-size:14px}
+ .h3-interaction-caption span{font-size:10px}
+ .h3-interaction-caption>svg{width:27px;height:27px}
+}
+@media(prefers-reduced-motion:reduce){.home3d .h3-interaction-choice,.h3-interaction-glow{animation:none;transition:none}}
+
+/* The wheel measures the selected model in screen pixels; zoom changes both. */
+.home3d .h3-interaction .h3-interaction-choice{width:var(--choice-size);height:var(--choice-size);font-size:var(--choice-font);gap:2px;padding:5px;border-width:2px}
+.h3-interaction .h3-interaction-choice>svg{width:var(--icon-size);height:var(--icon-size)}
+.h3-interaction .h3-interaction-caption strong{font-size:var(--heading-size)}
+.h3-interaction.is-small .h3-interaction-caption{gap:3px;left:6%;right:6%}
+.h3-interaction.is-small .h3-interaction-caption>svg{width:19px;height:19px}
+.h3-interaction.is-small .h3-interaction-caption span,.h3-interaction.is-small .h3-interaction-caption small{display:none}
+.h3-interaction.is-small .h3-interaction-choice i{font-size:8px;left:3px;top:7px}
+.h3-interaction.is-small .h3-interaction-close{width:26px;min-height:26px;font-size:17px}

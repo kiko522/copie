@@ -3,13 +3,18 @@ import {describe,it,expect} from 'vitest';
 import data from '../public/room3d/catalog.json';
 import {BUILDING_ASSETS} from '../apps/room3d/building.js';
 import {createHome,addRoom,validateHome,placementError} from '../apps/room3d/model.js';
-import {setBoundary,roomGroups,boundary,wallVisible,connectedRooms,validateBoundaries} from '../apps/room3d/topology.js';
+import {displayRooms,setBoundary,roomGroups,boundary,wallVisible,connectedRooms,validateBoundaries} from '../apps/room3d/topology.js';
 import {layoutRoom,moveInHome,layoutError} from '../apps/room3d/layout.js';
 import {walkingMap,findWalkPath,doorTarget} from '../apps/room3d/navigation.js';
 const catalog=[...data,...BUILDING_ASSETS];
 function house(){const h=createHome(catalog);h.rooms[0].items=[];return h;}
 const furniture=(assetId='table')=>({id:'f',assetId,x:0,y:.15,z:0,rotation:0,color:null,stored:false});
 describe('physical room boundaries and views',()=>{
+ it('isolates the selected room without changing merged rooms or navigation',()=>{
+  const h=house(),a=h.rooms[0],b=addRoom(h,'right');setBoundary(h,a.id,'right',{kind:'open'},catalog);const before=JSON.stringify(h);
+  expect(displayRooms(h,a).map(r=>r.id)).toEqual([a.id,b.id]);expect(displayRooms(h,b,'room')).toEqual([b]);
+  expect(roomGroups(h,catalog)).toHaveLength(1);expect(findWalkPath(walkingMap(h,0,catalog),[0,0],[ROOM_STEP.x,0])).not.toBeNull();expect(JSON.stringify(h)).toBe(before);
+ });
  it('hides walls without changing collision or room count',()=>{
   const h=house(),a=h.rooms[0];addRoom(h,'right');
   for(const view of ['cutaway','dollhouse','hidden']){expect(wallVisible(view,'right')).toBe(view==='dollhouse');expect(roomGroups(h,catalog)).toHaveLength(2);expect(findWalkPath(walkingMap(h,0,catalog),[0,0],[ROOM_STEP.x,0])).toBeNull();}

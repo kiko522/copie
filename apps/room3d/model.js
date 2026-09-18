@@ -32,6 +32,7 @@ export function validateHome(raw,catalog){
    if(i.assetId==='wooden_window_left'&&assets.has('wooden_window')){i.assetId='wooden_window';i.rotation=(i.rotation+90)%360;}
    if(typeof i.id!=='string'||ids.has(i.id)||!assets.has(i.assetId)||i.assetId==='shell'||![i.x,i.y,i.z,i.rotation].every(Number.isFinite)||Math.abs(i.x)>8||Math.abs(i.z)>8||i.y<-.5||i.y>8||![0,90,180,270].includes(i.rotation)||typeof i.stored!=='boolean'||i.color!==null&&!/^#[0-9a-f]{6}$/i.test(i.color))throw Error('家具信息不正确');
    ids.add(i.id);
+   if(i.materialColors!=null){const allowed=new Set((catalog.find(a=>a.id===i.assetId)?.colorParts||[]).map(p=>p.material));if(typeof i.materialColors!=='object'||Array.isArray(i.materialColors)||Object.entries(i.materialColors).some(([name,color])=>!allowed.has(name)||typeof color!=='string'||!/^#[0-9a-f]{6}$/i.test(color)))throw Error('家具局部配色不正确');}
    if(i.length!=null&&(!catalog.find(a=>a.id===i.assetId)?.building||!Number.isFinite(i.length)||i.length<.4||i.length>MAX_BUILDING_LENGTH))throw Error('墙段长度需要在 0.4 到 10 之间');
   }
  }
@@ -83,8 +84,8 @@ export function validateHome(raw,catalog){
  result.assetVersion=2;return result;
 }
 export const isWaterablePlant=a=>a?.surface==='floor'&&a.waterable===true;
-export function furnitureType(a){return a.category==='pets'?'pets':a.building?'building':isWaterablePlant(a)?'plants':a.seats?.length||['chair','sofa','petal_sofa'].includes(a.id)?'seating':a.support?'table':a.surface==='rug'?'rug':a.surface==='tabletop'?'tabletop':['left','back','wall'].includes(a.surface)?'wall':a.surface==='ceiling'?'ceiling':'floor'}
-export const TYPE_LABELS={all:'全部',gaming:'电竞',kitchen:'厨房',bathroom:'浴室',pets:'宠物',seating:'座椅',rug:'地毯',table:'桌台',tabletop:'桌上小物',plants:'绿植',floor:'落地',wall:'墙饰',ceiling:'吊挂',building:'墙体 / 栅栏',doors:'门'};
+export function furnitureType(a){return a.holdable?'plush':a.category==='pets'?'pets':a.building?'building':isWaterablePlant(a)?'plants':a.seats?.length||['chair','sofa','petal_sofa'].includes(a.id)?'seating':a.support?'table':a.surface==='rug'?'rug':a.surface==='tabletop'?'tabletop':['left','back','wall'].includes(a.surface)?'wall':a.surface==='ceiling'?'ceiling':'floor'}
+export const TYPE_LABELS={all:'全部',gaming:'电竞',kitchen:'厨房',bathroom:'浴室',bedroom:'卧室',pets:'宠物',plush:'玩偶',seating:'座椅',rug:'地毯',table:'桌台',tabletop:'桌上小物',plants:'绿植',floor:'落地',wall:'墙饰',ceiling:'吊挂',building:'墙体 / 栅栏',doors:'门'};
 export function supportSurfaces(asset){const s=asset?.support;return s?[s,...s.areas??[]].sort((a,b)=>b.height-a.height):[];}
 function supportError(i,room,catalog){
  const parent=room.items.find(p=>p.id===i.supportId&&!p.stored),a=catalog.find(a=>a.id===i.assetId),surfaces=supportSurfaces(catalog.find(a=>a.id===parent?.assetId));
@@ -118,7 +119,7 @@ export function snapToFurniture(item,room,catalog){
 export function moveFurniture(room,id,patch,catalog){
  const original=room.items.find(i=>i.id===id);if(!original)throw Error('找不到家具');
  const a=catalog.find(a=>a.id===original.assetId),proposed={...original,...patch};
- let next=a?.surface==='wall'?snapToWall(proposed,a,room,catalog):snapToSupport(proposed,room,catalog);if(!next)throw Error('没有能放下窗户的高墙');
+ let next=a?.surface==='wall'?snapToWall(proposed,a,room,catalog):snapToSupport(proposed,room,catalog);if(!next)throw Error('没有能放下这件物品的高墙');
  next=snapToFurniture(next,room,catalog);
  const candidates=previewFurniture(room,id,next).items;
  const test={...room,items:candidates};for(const i of furnitureGroup(test,id)){const why=placementError(i,test,catalog);if(why)throw Error(why)}

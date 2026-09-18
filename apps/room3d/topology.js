@@ -4,7 +4,7 @@ import {ROOM_STEP} from './dimensions.js';
 export const OPPOSITE={left:'right',right:'left',front:'back',back:'front'};
 export const EDGE_NAMES={back:'后侧',left:'左侧',right:'右侧',front:'前侧'};
 export const WALL_VIEWS={cutaway:'默认',dollhouse:'娃娃屋',hidden:'无墙'};
-export const DOOR_KINDS={door:'平开门',arch:'拱门',sliding:'推拉门'};
+export const DOOR_KINDS={door:'平开门',arch:'拱门',sliding:'推拉门',ribbon:'蝴蝶结心窗门',oak:'浅木镶板门',walnut:'深木镶板门',lattice:'木格推拉门'};
 export const MIN_DOOR_WIDTH=1.8;
 export function neighbor(home,room,edge){const e=ROOM_EDGES[edge];return home.rooms.find(r=>r.level===room.level&&r.x===room.x+(e.axis==='x'?Math.sign(e.at):0)&&r.z===room.z+(e.axis==='z'?Math.sign(e.at):0));}
 export function roomOffset(room,anchor){return [(room.x-anchor.x)*ROOM_STEP.x,(room.z-anchor.z)*ROOM_STEP.z];}
@@ -79,4 +79,4 @@ export function insideFloors(rect,cells){
 }
 
 // Visibility is independent of whether walls/doors permit movement.
-export function displayRooms(home,anchor){return home.rooms.filter(r=>r.level===anchor.level).sort((a,b)=>Math.abs(a.x-anchor.x)+Math.abs(a.z-anchor.z)-Math.abs(b.x-anchor.x)-Math.abs(b.z-anchor.z)||a.id.localeCompare(b.id));}
+export function displayRooms(home,anchor,scope='floor'){return scope==='room'?[anchor]:home.rooms.filter(r=>r.level===anchor.level).sort((a,b)=>Math.abs(a.x-anchor.x)+Math.abs(a.z-anchor.z)-Math.abs(b.x-anchor.x)-Math.abs(b.z-anchor.z)||a.id.localeCompare(b.id));}

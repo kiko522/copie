@@ -34,4 +34,4 @@ export function wallCandidates(item,asset,room,catalog){
  return wallFaces(room,catalog).flatMap(face=>{const next=mountOnFace(item,asset,face);return next?[{face,item:next,distance:Math.hypot(next.x-item.x,next.y-item.y,next.z-item.z)}]:[];}).sort((a,b)=>a.distance-b.distance||(a.item.rotation===item.rotation?-1:1));
 }
 export function snapToWall(item,asset,room,catalog){return wallCandidates(item,asset,room,catalog)[0]?.item??null;}
-export function wallPlacementError(item,asset,room,catalog){return wallCandidates(item,asset,room,catalog).some(c=>c.item.rotation===item.rotation&&Math.abs(c.item.x-item.x)<.002&&Math.abs(c.item.y-item.y)<.002&&Math.abs(c.item.z-item.z)<.002)?'':'请把窗户贴在足够宽的高墙上';}
+export function wallPlacementError(item,asset,room,catalog){return wallCandidates(item,asset,room,catalog).some(c=>c.item.rotation===item.rotation&&Math.abs(c.item.x-item.x)<.002&&Math.abs(c.item.y-item.y)<.002&&Math.abs(c.item.z-item.z)<.002)?'':'请把挂墙物件贴在足够宽的高墙上';}
