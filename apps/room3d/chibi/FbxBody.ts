@@ -1,3 +1,5 @@
+import {bindBlankBody} from './blankRig';
+import {createBlankBody,BLANK_HAIR_Y_SCALE,BLANK_HAIR_PIVOT,BLANK_HAIR_Z_SCALE} from './blankBody';
 import {eatingHand} from '../diningMotion.js';
 import {rhythmFrame} from '../rhythm.js';
 import type {ActivityPose} from './types';
@@ -17,6 +19,7 @@ const hairColorCache=new WeakMap<HTMLImageElement,WeakMap<HTMLImageElement,(x:nu
 export async function loadBody() { return new FBXLoader().loadAsync(referenceUrl); }
 
 export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'hair' | 'outfit', hair?:HairSettings) {
+    const blank=hair?.bodyShape==='blank';
     const headDepth=.82;
     const resources: Array<{ dispose(): void }> = [];
     const keep = <V extends { dispose(): void }>(v: V): V => { resources.push(v); return v; };
@@ -43,17 +46,27 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
         return canvas;
     };
     const faceDecor=decorLayer(true),bodyDecor=decorLayer(false);
-    const makeTexture=(keys:string[],fill?:string,eyes:'original'|'sleep'|'squeeze'='original')=>{
-        const canvas=document.createElement('canvas'); canvas.width=canvas.height=472;
+    const facePlacement={eyes:{x:0,y:blank?-16:0},mouth:{x:0,y:blank?-16:0}};
+    const makeTexture=(keys:string[],fill?:string,eyes:'original'|'sleep'|'squeeze'='original',target?:T.Texture)=>{
+        // Supersample only the facial atlas, preserving the original 472px
+        // artwork coordinates. This avoids extra loss when positioning features.
+        const facial=keys.includes('eyes'),resolution=facial?2:1;
+        const canvas=target?.image as HTMLCanvasElement||document.createElement('canvas'); canvas.width=canvas.height=472*resolution;
         const ctx=canvas.getContext('2d')!;
+        ctx.scale(resolution,resolution);ctx.imageSmoothingQuality='high';
         if(fill){ctx.fillStyle=fill;ctx.fillRect(0,0,472,472);}
         keys.forEach(k=>{
             const drawable=k==='faceDecor'?faceDecor:k==='outfit'?garment:parts[k];
             if(!drawable)return;
             ctx.save();
+            if(k==='eyes'||k==='mouth')ctx.translate(facePlacement[k].x,-facePlacement[k].y);
+            // Keep marks and accessories aligned with the -16 facial baseline.
+            if(blank&&(k==='facemark'||k==='faceDecor'))ctx.translate(0,16);
+            // Move the fringe artwork down while keeping its shell fitted to the head.
+            if(blank&&k==='fronthair')ctx.translate(0,16);
             // Lift the facial cluster by 8 creator pixels and gently compact it.
             // Garments/hair retain their original registration against the body.
-            if(k==='eyes'||k==='mouth'||k==='facemark')ctx.setTransform(.97,0,0,.96,237*.03,268*.04-8);
+            if(k==='eyes'||k==='mouth'||k==='facemark')ctx.transform(.97,0,0,.96,237*.03,268*.04-8);
             if(k==='eyes'&&eyes==='squeeze'){
                 ctx.strokeStyle='#514747';ctx.lineWidth=7;ctx.lineCap='round';ctx.lineJoin='round';
                 // Draw > on the left and < on the right in the original eye area.
@@ -66,7 +79,9 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
             }else ctx.drawImage(drawable,0,0,472,472);
             ctx.restore();
         });
-        const texture=keep(new T.CanvasTexture(canvas));texture.colorSpace=T.SRGBColorSpace;return texture;
+        const texture=target??keep(new T.CanvasTexture(canvas));texture.colorSpace=T.SRGBColorSpace;texture.needsUpdate=true;
+        if(facial){texture.anisotropy=4;texture.magFilter=T.LinearFilter;texture.minFilter=T.LinearMipmapLinearFilter;}
+        return texture;
     };
     const garmentMap=(rear:boolean)=>{
         const canvas=clothingCanvas(garment,skin,rear);
@@ -76,11 +91,19 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
         const map=keep(new T.CanvasTexture(canvas));map.colorSpace=T.SRGBColorSpace;return map;
     };
     const frontCloth=keep(new T.MeshStandardMaterial({map:appearance==='outfit'?garmentMap(false):makeTexture([],skin),roughness:1}));
-    const faceKeys=appearance==='outfit'?['facemark','eyes','mouth','outfit','faceDecor']:['facemark','eyes','mouth','faceDecor'];
+    const faceKeys=appearance==='outfit'&&!blank?['facemark','eyes','mouth','outfit','faceDecor']:['facemark','eyes','mouth','faceDecor'];
     const front=keep(new T.MeshStandardMaterial({map:makeTexture(faceKeys,skin),roughness:1}));
     const awakeMap=front.map;
     const asleepMap=makeTexture(faceKeys,skin,'sleep');
     const cuteMap=makeTexture(faceKeys,skin,'squeeze');
+    const setFacePlacement=(placement:typeof facePlacement)=>{
+        for(const key of ['eyes','mouth'] as const)for(const axis of ['x','y'] as const){
+            const value=placement[key][axis];facePlacement[key][axis]=Number.isFinite(value)?T.MathUtils.clamp(value,-80,80):0;
+        }
+        makeTexture(faceKeys,skin,'original',awakeMap!);
+        makeTexture(faceKeys,skin,'sleep',asleepMap);
+        makeTexture(faceKeys,skin,'squeeze',cuteMap);
+    };
     const back=keep(new T.MeshStandardMaterial({color:skin,roughness:1}));
     const backCloth=keep(new T.MeshStandardMaterial({map:appearance==='outfit'?garmentMap(true):makeTexture([],skin),roughness:1}));
     const root=new T.Group(), body=new T.Group();root.add(body);
@@ -149,7 +172,7 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
             const indices:number[]=[];g.clearGroups();
             for(let material=0;material<6;material++){const start=indices.length;for(const i of triangles)if(groups[i/3].materialIndex===material)indices.push(i,i+1,i+2);if(indices.length>start)g.addGroup(start,indices.length-start,material);}g.setIndex(indices);
         };
-        for(const side of [-1,1]){
+        for(const side of blank?[]:[-1,1]){
             const handGeo=keep(geo.clone());subset(handGeo,buckets[side>0?2:1]);
             handGeo.translate(-side*.415,-.51,0);
             const hand=new T.Mesh(handGeo,mesh.material);hand.name=`chibi-hand-${side}`;hand.position.set(side*.415,.51,0);body.add(hand);hands.push({mesh:hand,side});
@@ -311,8 +334,17 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
         crown.scale(.982,.947,.852*headDepth);crown.translate(0,1.25,0);
         finishUnderlay(crown,'plain-hair-crown');
     }
+    let rig:ReturnType<typeof bindBlankBody>|undefined;
+    if(blank){
+        const mesh=body.getObjectByName('chibi-body') as T.Mesh;
+        mesh.geometry=keep(createBlankBody(appearance));
+        hairPivot.position.y=BLANK_HAIR_PIVOT;
+        hairPivot.scale.set(1,BLANK_HAIR_Y_SCALE,BLANK_HAIR_Z_SCALE);
+        rig=bindBlankBody(mesh,hairPivot);keep(rig.skeleton);
+    }
     const smooth=(a:number,b:number,v:number)=>T.MathUtils.smoothstep(v,a,b);
     const animate=(time:number,motion:Motion,posture:Posture='standing',activity?:ActivityPose)=>{
+        if(blank)return;
         const cute=motion==='wave-cute',calm=motion==='wave-calm'||motion==='wave';
         const sleeping=motion==='sleep',angry=motion==='angry',sitting=posture==='seated'||motion==='sit';
         const floatingLimbs=sitting||!!activity||['wave','wave-cute','wave-calm','angry','dance','water'].includes(motion);
@@ -388,5 +420,7 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
             }
             p.needsUpdate=true;smoothNormals();
         }
-    };    return {root,resources,animate};
+    };
+    animate(0,'idle');
+    return {root,resources,animate,rig,setFacePlacement};
 }

@@ -34,6 +34,7 @@ try{
  await phone.getByRole('button',{name:'睡右边',exact:true}).tap();assert.equal(await phone.evaluate(()=>window.__homeEditor.inspect().chibiSeat.seatId),'1');
  // A narrow landscape menu pages rather than clipping the lower actions.
  await phone.setViewportSize({width:844,height:390});
+ await phone.waitForFunction(()=>document.querySelector('.h3-stage canvas').width===Math.floor(844*window.__homeEditor.inspect().pixelRatio));
  const landscape=await phone.evaluate(()=>{const r=window.__homeEditor.getState().rooms[0];return window.__homeEditor.projectItem(r.items.find(i=>i.assetId==='show_bed').id);});
  await phone.touchscreen.tap(landscape.x,landscape.y);await phone.waitForSelector('.h3-interaction-choice');
  assert.equal(await phone.locator('.h3-interaction-choice').count(),1);await phone.locator('[data-action="interaction-more"]').tap();assert.equal((await phone.locator('.h3-interaction-choice span').innerText()),'睡右边');
