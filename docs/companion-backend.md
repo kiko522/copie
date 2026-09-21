@@ -57,9 +57,11 @@ Docker 卷中。需要调整平台或关键词时修改 `/opt/TrendRadar/config/
 `docker compose restart trendradar trendradar-mcp`。更新镜像使用
 `docker compose pull trendradar trendradar-mcp && docker compose up -d`。
 
-Cloudflare 的 `api.492837.xyz` 在首次签发证书期间保持“仅 DNS”。服务器安全组至少放行 TCP
-80/443；SSH 端口按 VPS 实际设置放行。后端 8787 不映射到公网，只能由同一 Compose 网络中的
-Caddy 访问。
+Cloudflare 的 `api.492837.xyz` 在首次签发证书期间保持“仅 DNS”。这台 VPS 的 443 已由 Xray
+使用，因此 Caddy 对外使用 HTTPS 8443，并保留 TCP 80 完成 ACME 证书验证；服务器安全组需要
+放行 TCP 80/8443（需要 HTTP/3 时再放行 UDP 8443）。访问地址为
+`https://api.492837.xyz:8443`。后端 8787 不映射到公网，只能由同一 Compose 网络中的 Caddy
+访问，现有 Xray 配置无需改动。
 
 ## 本地验证
 
