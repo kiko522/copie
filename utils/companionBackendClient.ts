@@ -16,6 +16,23 @@ export interface CompanionOutboxItem {
   createdAt: number;
 }
 
+export interface CompanionExperienceSummary {
+  id: string;
+  kind: string;
+  content: { experience?: string; thought?: string; reason?: string; message?: string };
+  createdAt: number;
+}
+
+export interface CompanionCharacterStatus {
+  id: string;
+  name: string;
+  heartbeatEnabled: boolean;
+  updatedAt: number;
+  nextHeartbeatAt: number | null;
+  unansweredSends: number;
+  recentExperiences: CompanionExperienceSummary[];
+}
+
 const STORAGE_KEY = 'sully_companion_backend_config_v1';
 export const COMPANION_BACKEND_CONFIG_CHANGED = 'sully:companion-backend-config-changed';
 
@@ -117,3 +134,15 @@ export const testCompanionBackend = async (): Promise<{ ok: boolean; service: st
 
 export const testCompanionBackendAuth = async (): Promise<Record<string, unknown>> =>
   request('/v1/capabilities');
+
+export const listCompanionCharacterStatuses = async (): Promise<CompanionCharacterStatus[]> => {
+  const result = await request<{ items: CompanionCharacterStatus[] }>('/v1/characters');
+  return Array.isArray(result.items) ? result.items : [];
+};
+
+export const setCompanionCharacterHeartbeatEnabled = async (charId: string, enabled: boolean): Promise<void> => {
+  await request(`/v1/characters/${encodeURIComponent(charId)}/heartbeat`, {
+    method: 'PATCH',
+    body: JSON.stringify({ enabled }),
+  });
+};

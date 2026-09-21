@@ -31,6 +31,7 @@ test('authenticated character snapshot and outbox API', async () => {
     });
     assert.equal(preflight.status, 204);
     assert.match(preflight.headers.get('access-control-allow-methods') || '', /\bPUT\b/);
+    assert.match(preflight.headers.get('access-control-allow-methods') || '', /\bPATCH\b/);
     assert.equal(preflight.headers.get('access-control-allow-origin'), 'https://app.example.com');
 
     assert.equal((await fetch(`${base}/v1/capabilities`)).status, 401);
@@ -39,6 +40,14 @@ test('authenticated character snapshot and outbox API', async () => {
       method: 'PUT', headers, body: JSON.stringify({ name: '小满', persona: '安静', recentMessages: [] }),
     });
     assert.equal(saved.status, 200);
+    const statusList = await (await fetch(`${base}/v1/characters`, { headers })).json();
+    assert.equal(statusList.items[0].name, '小满');
+    assert.equal(statusList.items[0].heartbeatEnabled, true);
+    const disabled = await (await fetch(`${base}/v1/characters/c1/heartbeat`, {
+      method: 'PATCH', headers, body: JSON.stringify({ enabled: false }),
+    })).json();
+    assert.equal(disabled.heartbeatEnabled, false);
+    assert.deepEqual(app.store.dueCharacters(Number.MAX_SAFE_INTEGER), []);
     store.enqueue('c1', '测试主动消息');
     const outbox = await (await fetch(`${base}/v1/outbox?charId=c1`, { headers })).json();
     assert.equal(outbox.items[0].content, '测试主动消息');

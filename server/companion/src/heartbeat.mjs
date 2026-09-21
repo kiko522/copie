@@ -41,6 +41,7 @@ export class HeartbeatEngine {
   async runCharacter(charId, now = new Date()) {
     const char = this.store.getCharacter(charId);
     if (!char) throw Object.assign(new Error('角色不存在'), { status: 404 });
+    if (!char.heartbeatEnabled) return { status: 'disabled', nextHeartbeatAt: null };
     const quietMs = quietDelayMs(now, this.config.userTimeZone, this.config.quietStart, this.config.quietEnd);
     if (quietMs > 0) {
       this.store.appendExperience(charId, 'idle', { reason: 'quiet_hours' }, now.getTime());

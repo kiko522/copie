@@ -11,6 +11,8 @@
 - `GET /v1/weather?city=北京`：itboy 主源，Open-Meteo 自动备用。
 - `POST /v1/tools/search`：受限 Tavily 搜索，不开放 crawl/map。
 - `PUT /v1/characters/:id`：上传角色快照；只保留角色设定、兴趣与最近 30 条消息。
+- `GET /v1/characters`：读取每个角色的心跳开关、下次心跳、未回复次数和最近经历。
+- `PATCH /v1/characters/:id/heartbeat`：单独开启或暂停某个角色的心跳；暂停不会删除经历。
 - `POST /v1/characters/:id/user-replied`：用户回复后将连续主动消息计数归零。
 - `GET /v1/characters/:id/experiences`：读取追加式经历，不覆盖历史。
 - `POST /v1/heartbeat/:id`：手动触发一次心跳，便于验收。

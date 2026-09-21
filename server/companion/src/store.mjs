@@ -36,6 +36,10 @@ export class CompanionStore {
       );
       CREATE INDEX IF NOT EXISTS outbox_pending ON outbox(status, created_at);
     `);
+    const characterColumns = this.db.prepare('PRAGMA table_info(characters)').all();
+    if (!characterColumns.some((column) => column.name === 'heartbeat_enabled')) {
+      this.db.exec('ALTER TABLE characters ADD COLUMN heartbeat_enabled INTEGER NOT NULL DEFAULT 1');
+    }
   }
 
   close() { this.db.close(); }
@@ -55,8 +59,22 @@ export class CompanionStore {
   }
 
   dueCharacters(now = Date.now(), limit = 10) {
-    return this.db.prepare('SELECT * FROM characters WHERE next_heartbeat_at<=? ORDER BY next_heartbeat_at LIMIT ?')
+    return this.db.prepare('SELECT * FROM characters WHERE heartbeat_enabled=1 AND next_heartbeat_at<=? ORDER BY next_heartbeat_at LIMIT ?')
       .all(now, limit).map((row) => this.#character(row));
+  }
+
+  listCharacters() {
+    return this.db.prepare('SELECT * FROM characters ORDER BY updated_at DESC').all().map((row) => this.#character(row));
+  }
+
+  setHeartbeatEnabled(id, enabled, now = Date.now()) {
+    const result = this.db.prepare(`
+      UPDATE characters
+      SET heartbeat_enabled=?, next_heartbeat_at=CASE WHEN ?=1 THEN ? ELSE next_heartbeat_at END
+      WHERE id=?
+    `).run(enabled ? 1 : 0, enabled ? 1 : 0, now + 60_000, id);
+    if (result.changes === 0) return null;
+    return this.getCharacter(id);
   }
 
   schedule(id, nextAt, backoffLevel) {
@@ -124,6 +142,7 @@ export class CompanionStore {
       nextHeartbeatAt: row.next_heartbeat_at,
       backoffLevel: row.backoff_level,
       unansweredSends: row.unanswered_sends,
+      heartbeatEnabled: row.heartbeat_enabled !== 0,
     };
   }
 }

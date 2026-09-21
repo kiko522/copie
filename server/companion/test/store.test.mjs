@@ -20,6 +20,11 @@ test('character, append-only experience, outbox and reply reset round-trip', () 
     assert.equal(store.listOutbox('c1').length, 1);
     store.userReplied('c1', 6000);
     assert.equal(store.getCharacter('c1').unansweredSends, 0);
+    assert.equal(store.getCharacter('c1').heartbeatEnabled, true);
+    assert.equal(store.setHeartbeatEnabled('c1', false, 7000).heartbeatEnabled, false);
+    assert.equal(store.dueCharacters(1_000_000).length, 0);
+    assert.equal(store.setHeartbeatEnabled('c1', true, 8000).heartbeatEnabled, true);
+    assert.equal(store.dueCharacters(68_000)[0].id, 'c1');
   } finally {
     store.close();
     rmSync(dir, { recursive: true, force: true });

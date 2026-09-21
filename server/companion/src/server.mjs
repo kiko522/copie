@@ -50,6 +50,19 @@ export const createCompanionApp = (config = loadConfig(), store = new CompanionS
       }, cors);
     }
 
+    if (req.method === 'GET' && url.pathname === '/v1/characters') {
+      const items = store.listCharacters().map((character) => ({
+        id: character.id,
+        name: character.snapshot.name,
+        heartbeatEnabled: character.heartbeatEnabled,
+        updatedAt: character.updatedAt,
+        nextHeartbeatAt: character.heartbeatEnabled ? character.nextHeartbeatAt : null,
+        unansweredSends: character.unansweredSends,
+        recentExperiences: store.recentExperiences(character.id, 3),
+      }));
+      return json(res, 200, { items }, cors);
+    }
+
     const charMatch = url.pathname.match(/^\/v1\/characters\/([^/]+)$/);
     if (req.method === 'PUT' && charMatch) {
       const id = decodeURIComponent(charMatch[1]);
@@ -66,6 +79,17 @@ export const createCompanionApp = (config = loadConfig(), store = new CompanionS
         timeZone: String(body.timeZone ?? '').slice(0, 100),
       };
       return json(res, 200, store.upsertCharacter(id, snapshot), cors);
+    }
+
+    const heartbeatSettingMatch = url.pathname.match(/^\/v1\/characters\/([^/]+)\/heartbeat$/);
+    if (req.method === 'PATCH' && heartbeatSettingMatch) {
+      const body = await readJsonBody(req);
+      if (typeof body.enabled !== 'boolean') {
+        throw Object.assign(new Error('enabled 必须是布尔值'), { status: 400 });
+      }
+      const updated = store.setHeartbeatEnabled(decodeURIComponent(heartbeatSettingMatch[1]), body.enabled);
+      if (!updated) throw Object.assign(new Error('角色不存在'), { status: 404 });
+      return json(res, 200, updated, cors);
     }
 
     const replyMatch = url.pathname.match(/^\/v1\/characters\/([^/]+)\/user-replied$/);
