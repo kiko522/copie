@@ -60,7 +60,8 @@ Docker 卷中。需要调整平台或关键词时修改 `/opt/TrendRadar/config/
 
 Cloudflare 中的后端域名在首次签发证书期间保持“仅 DNS”。如果 VPS 的 443 已被其他服务占用，
 Caddy 会通过 HTTPS 8443 与它共存，并保留 TCP 80 完成 ACME 证书验证；服务器安全组需要放行
-TCP 80/8443（需要 HTTP/3 时再放行 UDP 8443）。访问地址为
+TCP 80/8443。由于容器内外 TLS 端口不同，配置会禁用 HTTP/3，避免向浏览器错误宣告宿主机
+的 443；HTTP/1.1 与 HTTP/2 不受影响。访问地址为
 `https://<BACKEND_DOMAIN>:8443`。后端 8787 不映射到公网，只能由同一 Compose 网络中的 Caddy
 访问，现有 Xray 配置无需改动。
 

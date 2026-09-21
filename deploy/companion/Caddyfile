@@ -1,3 +1,11 @@
+{
+  # TLS 在容器内监听 443、由宿主机 8443 转发。禁用 HTTP/3，避免 Caddy
+  # 向浏览器错误宣告 Alt-Svc :443（宿主机的 443 可能属于其他服务）。
+  servers {
+    protocols h1 h2
+  }
+}
+
 {$BACKEND_DOMAIN} {
   encode zstd gzip
 

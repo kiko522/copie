@@ -84,7 +84,6 @@ services:
       - "80:80"
       # 服务器的 443 由现有 Xray 使用；Caddy 通过 8443 与它共存。
       - "8443:443"
-      - "8443:443/udp"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
