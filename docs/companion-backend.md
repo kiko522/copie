@@ -67,6 +67,34 @@ TCP 80/8443。由于容器内外 TLS 端口不同，配置会禁用 HTTP/3，避
 `https://<BACKEND_DOMAIN>:8443`。后端 8787 不映射到公网，只能由同一 Compose 网络中的 Caddy
 访问，现有 Xray 配置无需改动。
 
+## Cloudflare Tunnel（推荐长期入口）
+
+Compose 同时提供 `cloudflared` 连接器。它只建立到 Cloudflare 的出站连接，不监听宿主机
+443，因此不会与 Xray 冲突。先在 Cloudflare 控制台的 **Networking → Tunnels** 创建远程管理
+Tunnel，将控制台给出的连接器 Token 写入 VPS 的 `.env`：
+
+```dotenv
+CLOUDFLARED_TUNNEL_TOKEN=eyJ...
+```
+
+在 Tunnel 的 **Routes → Published application** 中添加：
+
+- Hostname：`api.<你的域名>`
+- Service URL：`http://backend:8787`
+
+`backend` 是同一 Compose 网络中的服务名；无需公开 8787，也不要填写公网 8443。启动并验证：
+
+```bash
+docker compose pull cloudflared
+docker compose up -d cloudflared
+docker compose logs --tail=50 cloudflared
+curl https://api.<你的域名>/healthz
+```
+
+确认无端口地址返回健康 JSON 后，把网页中的个人陪伴后端地址改为
+`https://api.<你的域名>`。迁移期间保留 Caddy/8443，确认稳定后再决定是否收紧 80/8443
+防火墙；不要在验证前删除回退入口。
+
 ## 本地验证
 
 ```bash

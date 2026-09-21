@@ -98,6 +98,30 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Cloudflare Tunnel 使用出站连接发布 API，不占用宿主机 443，也不影响 Xray。
+  # 控制台里的 Published application Service URL 填 http://backend:8787。
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARED_TUNNEL_TOKEN:?Set CLOUDFLARED_TUNNEL_TOKEN in .env}
+    networks:
+      - internal
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 networks:
   internal:
 
