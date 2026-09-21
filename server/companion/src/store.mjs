@@ -88,6 +88,31 @@ export class CompanionStore {
     return this.getCharacter(id);
   }
 
+  clearCharacterHistory(id, now = Date.now()) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const row = this.db.prepare('SELECT snapshot_json FROM characters WHERE id=?').get(id);
+      if (!row) {
+        this.db.exec('ROLLBACK');
+        return null;
+      }
+      const snapshot = JSON.parse(row.snapshot_json);
+      snapshot.recentMessages = [];
+      const deletedExperiences = this.db.prepare('DELETE FROM experiences WHERE char_id=?').run(id).changes;
+      const deletedOutbox = this.db.prepare('DELETE FROM outbox WHERE char_id=?').run(id).changes;
+      this.db.prepare(`
+        UPDATE characters
+        SET snapshot_json=?, updated_at=?, next_heartbeat_at=?, backoff_level=0, unanswered_sends=0
+        WHERE id=?
+      `).run(JSON.stringify(snapshot), now, now + 10 * 60_000, id);
+      this.db.exec('COMMIT');
+      return { character: this.getCharacter(id), deletedExperiences, deletedOutbox };
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   appendExperience(charId, kind, content, now = Date.now()) {
     const id = randomUUID();
     this.db.prepare('INSERT INTO experiences (id,char_id,kind,content_json,created_at) VALUES (?,?,?,?,?)')

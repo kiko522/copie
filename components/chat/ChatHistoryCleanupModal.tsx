@@ -7,7 +7,7 @@ import { CHAT_CLEANUP_CONFIRMATION, deleteChatHistoryCleanup, prepareChatHistory
 interface Props {
     character: Pick<CharacterProfile, 'id' | 'name'>;
     onClose: () => void;
-    onDeleted: (plan: ChatCleanupPlan) => void | Promise<void>;
+    onDeleted: (plan: ChatCleanupPlan, clearCompanionBackend: boolean) => void | Promise<void>;
 }
 type Phase = 'select' | 'review' | 'confirm' | 'deleting' | 'done';
 const sourceLabels: Record<string, string> = { date: '见面', call: '通话', story_theater_memory: '剧情陪伴' };
@@ -31,6 +31,7 @@ export default function ChatHistoryCleanupModal({ character, onClose, onDeleted 
     const [reviewed, setReviewed] = useState(false);
     const [confirmation, setConfirmation] = useState('');
     const [error, setError] = useState('');
+    const [clearCompanionBackend, setClearCompanionBackend] = useState(true);
     const prepareController = useRef<AbortController | null>(null);
     const deleting = useRef(false);
     const mounted = useRef(true);
@@ -99,7 +100,7 @@ export default function ChatHistoryCleanupModal({ character, onClose, onDeleted 
             return;
         }
         // 删除已落盘；刷新失败不得把它显示成“删除失败”并诱导重复执行。
-        try { await onDeleted(plan); } catch (reason) { console.error('[ChatHistoryCleanup] refresh failed', reason); }
+        try { await onDeleted(plan, clearCompanionBackend); } catch (reason) { console.error('[ChatHistoryCleanup] refresh failed', reason); }
         deleting.current = false;
         if (mounted.current) setPhase('done');
     };
@@ -161,13 +162,13 @@ export default function ChatHistoryCleanupModal({ character, onClose, onDeleted 
         <Modal isOpen={phase === 'review'} title='第一次确认：检查删除范围' onClose={backToSelection} footer={<>
             {cancelButton}<button type='button' onClick={() => { setReviewed(true); setConfirmation(''); setPhase('confirm'); }} className='flex-1 rounded-2xl bg-red-100 p-3 text-sm font-bold text-red-700'>继续第二次确认</button>
         </>}>
-            <div className='space-y-4'>{summary}<p className='text-sm font-bold text-red-700'>这是永久删除，无法撤销。请先确认已备份需要保留的内容。</p><p className='text-xs text-slate-500'>此步不会删除任何记录，下一步还需输入指定文字。</p></div>
+            <div className='space-y-4'>{summary}<label className='flex items-start gap-3 rounded-xl border border-violet-200 bg-violet-50 p-3 text-xs text-slate-700'><input type='checkbox' checked={clearCompanionBackend} onChange={event => setClearCompanionBackend(event.target.checked)} className='mt-0.5' /><span><b>同时清除 VPS 个人陪伴后端状态</b><span className='mt-1 block text-slate-500'>清空该角色的最近对话、心跳经历、消息队列及未回复计数；保留角色设定和心跳开关。即使这里只删除部分本地记录，VPS 上述状态也会全部清空。</span></span></label><p className='text-sm font-bold text-red-700'>这是永久删除，无法撤销。请先确认已备份需要保留的内容。</p><p className='text-xs text-slate-500'>此步不会删除任何记录，下一步还需输入指定文字。</p></div>
         </Modal>
 
         <Modal isOpen={phase === 'confirm' || phase === 'deleting'} title='第二次确认：永久删除' onClose={() => { if (!deleting.current) backToSelection(); }} footer={<>
             {!deleting.current && cancelButton}<button type='button' disabled={phase === 'deleting' || !reviewed || confirmation !== CHAT_CLEANUP_CONFIRMATION} onClick={() => void remove()} className='flex-1 rounded-2xl bg-red-600 p-3 text-sm font-bold text-white disabled:bg-slate-200 disabled:text-slate-400'>{phase === 'deleting' ? '正在永久删除…' : `永久删除 ${plan?.ids.length.toLocaleString() || 0} 条`}</button>
         </>}>
-            <div className='space-y-4'>{summary}<p className='text-sm font-bold text-red-700'>删除后无法恢复。请完整输入以下文字：</p><p className='select-text rounded-xl bg-slate-100 p-3 text-sm font-bold text-slate-800'>{CHAT_CLEANUP_CONFIRMATION}</p><input aria-label='永久删除确认文字' autoComplete='off' value={confirmation} disabled={phase === 'deleting'} onChange={event => setConfirmation(event.target.value)} placeholder='在这里输入确认文字' className='w-full rounded-xl border border-red-200 p-3 text-sm' /></div>
+            <div className='space-y-4'>{summary}{clearCompanionBackend && <p className='rounded-xl bg-violet-50 p-3 text-xs font-bold text-violet-700'>将同时清除该角色在 VPS 陪伴后端的测试状态；角色设定与心跳开关保留。</p>}<p className='text-sm font-bold text-red-700'>删除后无法恢复。请完整输入以下文字：</p><p className='select-text rounded-xl bg-slate-100 p-3 text-sm font-bold text-slate-800'>{CHAT_CLEANUP_CONFIRMATION}</p><input aria-label='永久删除确认文字' autoComplete='off' value={confirmation} disabled={phase === 'deleting'} onChange={event => setConfirmation(event.target.value)} placeholder='在这里输入确认文字' className='w-full rounded-xl border border-red-200 p-3 text-sm' /></div>
         </Modal>
 
         <Modal isOpen={phase === 'done'} title='清理完成' onClose={close}><p className='text-sm text-slate-700'>已永久删除 {plan?.ids.length.toLocaleString()} 条选中记录，其余记录保留。</p></Modal>

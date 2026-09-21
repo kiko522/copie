@@ -156,6 +156,15 @@ export const setCompanionCharacterHeartbeatEnabled = async (charId: string, enab
 };
 
 /**
+ * 清除该角色在个人陪伴后端的测试/聊天派生状态。
+ * 保留角色快照中的人设、时区和心跳开关，只清最近对话、经历、outbox 与计数。
+ */
+export const clearCompanionCharacterHistory = async (charId: string): Promise<{
+  deletedExperiences: number;
+  deletedOutbox: number;
+}> => request(`/v1/characters/${encodeURIComponent(charId)}/history`, { method: 'DELETE' });
+
+/**
  * 由已认证的个人陪伴后端签发短期 LiveKit 入场票。
  * LiveKit API Secret 永远不会进入浏览器或仓库。
  */

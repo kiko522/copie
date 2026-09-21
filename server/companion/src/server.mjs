@@ -91,6 +91,17 @@ export const createCompanionApp = (config = loadConfig(), store = new CompanionS
       return json(res, 200, store.upsertCharacter(id, snapshot), cors);
     }
 
+    const charHistoryMatch = url.pathname.match(/^\/v1\/characters\/([^/]+)\/history$/);
+    if (req.method === 'DELETE' && charHistoryMatch) {
+      const cleared = store.clearCharacterHistory(decodeURIComponent(charHistoryMatch[1]));
+      if (!cleared) throw Object.assign(new Error('角色不存在'), { status: 404 });
+      return json(res, 200, {
+        ok: true,
+        deletedExperiences: cleared.deletedExperiences,
+        deletedOutbox: cleared.deletedOutbox,
+      }, cors);
+    }
+
     const heartbeatSettingMatch = url.pathname.match(/^\/v1\/characters\/([^/]+)\/heartbeat$/);
     if (req.method === 'PATCH' && heartbeatSettingMatch) {
       const body = await readJsonBody(req);

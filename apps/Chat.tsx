@@ -49,6 +49,7 @@ import FavoritesPortal from '../components/chat/VoiceFavoritesPortal';
 import ChatModals from '../components/chat/ChatModals';
 import ChatHistoryCleanupModal from '../components/chat/ChatHistoryCleanupModal';
 import type { ChatCleanupPlan } from '../utils/chatHistoryCleanup';
+import { clearCompanionCharacterHistory, loadCompanionBackendConfig } from '../utils/companionBackendClient';
 import Modal from '../components/os/Modal';
 import ProactiveSettingsModal from '../components/chat/ProactiveSettingsModal';
 import ActiveMsg2SettingsModal from '../components/chat/ActiveMsg2SettingsModal';
@@ -2366,12 +2367,24 @@ const Chat: React.FC = () => {
         );
     };
 
-    const handleHistoryCleanupDone = async (plan: ChatCleanupPlan) => {
+    const handleHistoryCleanupDone = async (plan: ChatCleanupPlan, clearCompanionBackend: boolean) => {
         trackEvent('清空聊天记录');
         // invalidate 而不是普通打脏：云端那份 fire_pack 里存着最近 30 条对话原文，正是
         // 用户此刻要删掉的东西。没有待触发任务的角色轮不到重传，普通打脏会被门丢掉，
         // 那份原文就永久留在 D1 里了（角色命名空间在 worker 侧没有 TTL）。
         markAmsgStateDirty({ char, userProfile, groups, realtimeConfig }, 'invalidate');
+        if (clearCompanionBackend) {
+            const companionConfig = loadCompanionBackendConfig();
+            if (companionConfig.enabled && companionConfig.baseUrl && companionConfig.token) {
+                try {
+                    const result = await clearCompanionCharacterHistory(plan.charId);
+                    addToast(`VPS 陪伴状态已清除（${result.deletedExperiences} 条经历，${result.deletedOutbox} 条消息）`, 'success');
+                } catch (error: any) {
+                    console.warn('[ChatHistoryCleanup] VPS 陪伴状态清理失败', error);
+                    addToast(`本地聊天已清除，但 VPS 陪伴状态清理失败：${error?.message || '网络错误'}`, 'error');
+                }
+            }
+        }
         if (activeCharIdRef.current !== plan.charId) return;
         discardVoiceForMessages(plan.ids, false);
         setAllHistoryMessages([]);
