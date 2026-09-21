@@ -21,6 +21,18 @@ test('authenticated character snapshot and outbox API', async () => {
   await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${app.server.address().port}`;
   try {
+    const preflight = await fetch(`${base}/v1/characters/c1`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://app.example.com',
+        'Access-Control-Request-Method': 'PUT',
+        'Access-Control-Request-Headers': 'authorization,content-type',
+      },
+    });
+    assert.equal(preflight.status, 204);
+    assert.match(preflight.headers.get('access-control-allow-methods') || '', /\bPUT\b/);
+    assert.equal(preflight.headers.get('access-control-allow-origin'), 'https://app.example.com');
+
     assert.equal((await fetch(`${base}/v1/capabilities`)).status, 401);
     const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
     const saved = await fetch(`${base}/v1/characters/c1`, {
