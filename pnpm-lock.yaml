@@ -158,28 +158,28 @@ importers:
     dependencies:
       '@livekit/agents':
         specifier: 1.7.0
-        version: 1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.24.1)
+        version: 1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.25.76)
       '@livekit/agents-plugin-deepgram':
         specifier: 1.7.0
-        version: 1.7.0(@livekit/agents@1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.24.1))(@livekit/rtc-node@0.13.35)
+        version: 1.7.0(@livekit/agents@1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.25.76))(@livekit/rtc-node@0.13.35)
       '@livekit/agents-plugin-elevenlabs':
         specifier: 1.7.0
-        version: 1.7.0(@livekit/agents@1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.24.1))(@livekit/rtc-node@0.13.35)
+        version: 1.7.0(@livekit/agents@1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.25.76))(@livekit/rtc-node@0.13.35)
       '@livekit/agents-plugin-fishaudio':
         specifier: 1.7.0
-        version: 1.7.0(@livekit/agents@1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.24.1))(@livekit/rtc-node@0.13.35)
+        version: 1.7.0(@livekit/agents@1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.25.76))(@livekit/rtc-node@0.13.35)
       '@livekit/agents-plugin-minimax':
         specifier: 1.7.0
-        version: 1.7.0(@livekit/agents@1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.24.1))(@livekit/rtc-node@0.13.35)
+        version: 1.7.0(@livekit/agents@1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.25.76))(@livekit/rtc-node@0.13.35)
       '@livekit/agents-plugin-openai':
         specifier: 1.7.0
-        version: 1.7.0(@livekit/agents@1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.24.1))(@livekit/rtc-node@0.13.35)(zod@3.24.1)
+        version: 1.7.0(@livekit/agents@1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.25.76))(@livekit/rtc-node@0.13.35)(zod@3.25.76)
       dotenv:
         specifier: ^16.4.5
         version: 16.4.5
       zod:
-        specifier: ^3.24.1
-        version: 3.24.1
+        specifier: 3.25.76
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^22.10.2
@@ -3144,8 +3144,8 @@ packages:
     peerDependencies:
       zod: ^3.25.28 || ^4
 
-  zod@3.24.1:
-    resolution: {integrity: sha512-muH7gBL9sI1nciMZV67X5fTKKBLtwpZ5VBp1vsOQzj1MhrBZ4wlVCm3gedKZWLp0Oyel8sIGfeiz54Su+OVT+A==}
+  zod@3.25.76:
+    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
 snapshots:
 
@@ -3763,18 +3763,18 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@livekit/agents-plugin-deepgram@1.7.0(@livekit/agents@1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.24.1))(@livekit/rtc-node@0.13.35)':
+  '@livekit/agents-plugin-deepgram@1.7.0(@livekit/agents@1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.25.76))(@livekit/rtc-node@0.13.35)':
     dependencies:
-      '@livekit/agents': 1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.24.1)
+      '@livekit/agents': 1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.25.76)
       '@livekit/rtc-node': 0.13.35
       ws: 8.21.3
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@livekit/agents-plugin-elevenlabs@1.7.0(@livekit/agents@1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.24.1))(@livekit/rtc-node@0.13.35)':
+  '@livekit/agents-plugin-elevenlabs@1.7.0(@livekit/agents@1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.25.76))(@livekit/rtc-node@0.13.35)':
     dependencies:
-      '@livekit/agents': 1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.24.1)
+      '@livekit/agents': 1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.25.76)
       '@livekit/mutex': 1.1.1
       '@livekit/rtc-node': 0.13.35
       ws: 8.21.3
@@ -3782,9 +3782,9 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@livekit/agents-plugin-fishaudio@1.7.0(@livekit/agents@1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.24.1))(@livekit/rtc-node@0.13.35)':
+  '@livekit/agents-plugin-fishaudio@1.7.0(@livekit/agents@1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.25.76))(@livekit/rtc-node@0.13.35)':
     dependencies:
-      '@livekit/agents': 1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.24.1)
+      '@livekit/agents': 1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.25.76)
       '@livekit/rtc-node': 0.13.35
       '@msgpack/msgpack': 3.1.3
       ws: 8.21.3
@@ -3792,23 +3792,23 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@livekit/agents-plugin-minimax@1.7.0(@livekit/agents@1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.24.1))(@livekit/rtc-node@0.13.35)':
+  '@livekit/agents-plugin-minimax@1.7.0(@livekit/agents@1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.25.76))(@livekit/rtc-node@0.13.35)':
     dependencies:
-      '@livekit/agents': 1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.24.1)
+      '@livekit/agents': 1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.25.76)
       '@livekit/rtc-node': 0.13.35
       ws: 8.21.3
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@livekit/agents-plugin-openai@1.7.0(@livekit/agents@1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.24.1))(@livekit/rtc-node@0.13.35)(zod@3.24.1)':
+  '@livekit/agents-plugin-openai@1.7.0(@livekit/agents@1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.25.76))(@livekit/rtc-node@0.13.35)(zod@3.25.76)':
     dependencies:
-      '@livekit/agents': 1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.24.1)
+      '@livekit/agents': 1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.25.76)
       '@livekit/mutex': 1.1.1
       '@livekit/rtc-node': 0.13.35
-      openai: 6.49.0(ws@8.21.3)(zod@3.24.1)
+      openai: 6.49.0(ws@8.21.3)(zod@3.25.76)
       ws: 8.21.3
-      zod: 3.24.1
+      zod: 3.25.76
     transitivePeerDependencies:
       - '@aws-sdk/credential-provider-node'
       - '@smithy/hash-node'
@@ -3816,7 +3816,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@livekit/agents@1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.24.1)':
+  '@livekit/agents@1.7.0(@livekit/rtc-node@0.13.35)(@types/node@22.20.4)(typescript@5.9.3)(zod@3.25.76)':
     dependencies:
       '@bufbuild/protobuf': 1.10.0
       '@livekit/av': 10.0.0
@@ -3847,14 +3847,14 @@ snapshots:
       jsonrepair: 3.15.0
       livekit-server-sdk: 2.19.1
       ofetch: 1.5.1
-      openai: 6.49.0(ws@8.21.3)(zod@3.24.1)
+      openai: 6.49.0(ws@8.21.3)(zod@3.25.76)
       pidusage: 4.0.1
       pino: 8.19.0
       pino-pretty: 11.3.0
       sharp: 0.35.3(@types/node@22.20.4)
       ws: 8.21.3
-      zod: 3.24.1
-      zod-to-json-schema: 3.25.2(zod@3.24.1)
+      zod: 3.25.76
+      zod-to-json-schema: 3.25.2(zod@3.25.76)
     transitivePeerDependencies:
       - '@aws-sdk/credential-provider-node'
       - '@smithy/hash-node'
@@ -5291,10 +5291,10 @@ snapshots:
       is-docker: 2.2.1
       is-wsl: 2.2.0
 
-  openai@6.49.0(ws@8.21.3)(zod@3.24.1):
+  openai@6.49.0(ws@8.21.3)(zod@3.25.76):
     optionalDependencies:
       ws: 8.21.3
-      zod: 3.24.1
+      zod: 3.25.76
 
   p-limit@2.3.0:
     dependencies:
@@ -6061,8 +6061,8 @@ snapshots:
       buffer-crc32: 0.2.13
       fd-slicer: 1.1.0
 
-  zod-to-json-schema@3.25.2(zod@3.24.1):
+  zod-to-json-schema@3.25.2(zod@3.25.76):
     dependencies:
-      zod: 3.24.1
+      zod: 3.25.76
 
-  zod@3.24.1: {}
+  zod@3.25.76: {}
