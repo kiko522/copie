@@ -11,7 +11,7 @@ test('authenticated character snapshot and outbox API', async () => {
   const store = new CompanionStore(dir);
   const token = 't'.repeat(32);
   const config = {
-    port: 0, backendToken: token, allowedOrigins: new Set(['https://492837.xyz']),
+    port: 0, backendToken: token, allowedOrigins: new Set(['https://app.example.com']),
     tavilyApiKey: '', itboyCityCodes: {}, upstreamTimeoutMs: 1000,
     llmBaseUrl: '', llmApiKey: '', heartbeatModel: '', trendRadarMcpUrl: '',
     userTimeZone: 'Asia/Shanghai', quietStart: '02:00', quietEnd: '08:30',

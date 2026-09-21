@@ -1,4 +1,4 @@
-api.492837.xyz {
+{$BACKEND_DOMAIN} {
   encode zstd gzip
 
   header {

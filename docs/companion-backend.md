@@ -1,6 +1,6 @@
 # 个人 VPS 陪伴后端
 
-这套后端服务于 `api.492837.xyz`，目标是承载角色后台生活、受控心跳和外部世界能力。
+这套后端部署在你自己的域名上，目标是承载角色后台生活、受控心跳和外部世界能力。
 当前已落能力中枢、角色状态、经历日志、TrendRadar 读取、自适应心跳、消息 outbox，
 以及浏览器侧角色快照同步和聊天数据库接入。
 
@@ -37,13 +37,14 @@ cp .env.example .env
 chmod 600 .env
 ```
 
-编辑 `.env`，填入随机 `BACKEND_TOKEN` 和 Tavily Key。然后：
+编辑 `.env`，将 `BACKEND_DOMAIN`、`ALLOWED_ORIGINS` 换成自己的后端域名和前端来源，
+并填入随机 `BACKEND_TOKEN`、Tavily Key 和心跳模型密钥。然后：
 
 ```bash
 docker compose build
 docker compose up -d
 docker compose ps
-curl https://api.492837.xyz/healthz
+curl "https://${BACKEND_DOMAIN}:8443/healthz"
 ```
 
 `LLM_BASE_URL` 使用 OpenAI 兼容地址；当前模板默认使用 DeepSeek：
@@ -57,10 +58,10 @@ Docker 卷中。需要调整平台或关键词时修改 `/opt/TrendRadar/config/
 `docker compose restart trendradar trendradar-mcp`。更新镜像使用
 `docker compose pull trendradar trendradar-mcp && docker compose up -d`。
 
-Cloudflare 的 `api.492837.xyz` 在首次签发证书期间保持“仅 DNS”。这台 VPS 的 443 已由 Xray
-使用，因此 Caddy 对外使用 HTTPS 8443，并保留 TCP 80 完成 ACME 证书验证；服务器安全组需要
-放行 TCP 80/8443（需要 HTTP/3 时再放行 UDP 8443）。访问地址为
-`https://api.492837.xyz:8443`。后端 8787 不映射到公网，只能由同一 Compose 网络中的 Caddy
+Cloudflare 中的后端域名在首次签发证书期间保持“仅 DNS”。如果 VPS 的 443 已被其他服务占用，
+Caddy 会通过 HTTPS 8443 与它共存，并保留 TCP 80 完成 ACME 证书验证；服务器安全组需要放行
+TCP 80/8443（需要 HTTP/3 时再放行 UDP 8443）。访问地址为
+`https://<BACKEND_DOMAIN>:8443`。后端 8787 不映射到公网，只能由同一 Compose 网络中的 Caddy
 访问，现有 Xray 配置无需改动。
 
 ## 本地验证

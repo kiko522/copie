@@ -17,7 +17,6 @@ export const callHeartbeatModel = async ({ config, snapshot, experiences, trends
     headers: {
       Authorization: `Bearer ${config.llmApiKey}`,
       'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://api.492837.xyz',
       'X-Title': 'Sully Companion Heartbeat',
     },
     body: JSON.stringify({

@@ -78,6 +78,8 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    environment:
+      BACKEND_DOMAIN: ${BACKEND_DOMAIN:?Set BACKEND_DOMAIN in .env}
     ports:
       - "80:80"
       # 服务器的 443 由现有 Xray 使用；Caddy 通过 8443 与它共存。

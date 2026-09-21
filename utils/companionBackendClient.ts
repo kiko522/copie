@@ -21,7 +21,7 @@ export const COMPANION_BACKEND_CONFIG_CHANGED = 'sully:companion-backend-config-
 
 export const defaultCompanionBackendConfig: CompanionBackendConfig = {
   enabled: false,
-  baseUrl: 'https://api.492837.xyz',
+  baseUrl: '',
   token: '',
 };
 
