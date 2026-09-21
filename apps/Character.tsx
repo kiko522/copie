@@ -1579,6 +1579,39 @@ ${isInitialGeneration ? `
                                </div>
                                <p className="text-[11px] text-slate-500">已有 voice_id 可直接填，不依赖查询。聊天角色配置后，后续接 TTS 可直接读取。</p>
 
+                               <div className="rounded-2xl border border-emerald-200/70 bg-emerald-50/50 p-2.5 space-y-2">
+                                   <div>
+                                       <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest">该角色使用的语音服务</div>
+                                       <p className="text-[10px] text-slate-400 mt-0.5">聊天、见面、普通电话和实时电话都会沿用这里；“跟随全局”兼容旧角色。</p>
+                                   </div>
+                                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 rounded-xl bg-white/80 p-1">
+                                       {([
+                                           ['', '跟随全局'],
+                                           ['minimax', 'MiniMax'],
+                                           ['elevenlabs', 'ElevenLabs'],
+                                           ['fishaudio', '鱼声 Fish'],
+                                       ] as const).map(([provider, label]) => {
+                                           const saved = formData.voiceProfile?.provider;
+                                           const active = provider ? saved === provider : !saved || saved === 'custom';
+                                           return (
+                                               <button
+                                                   key={provider || 'inherit'}
+                                                   type="button"
+                                                   onClick={() => {
+                                                       const next = { ...(formData.voiceProfile || {}) };
+                                                       if (provider) next.provider = provider;
+                                                       else delete next.provider;
+                                                       handleChange('voiceProfile', next);
+                                                   }}
+                                                   className={`rounded-lg px-2 py-1.5 text-[10px] font-bold transition-colors ${active ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-500 hover:bg-emerald-50'}`}
+                                               >
+                                                   {label}
+                                               </button>
+                                           );
+                                       })}
+                                   </div>
+                               </div>
+
                                <div className="rounded-2xl border border-violet-200/60 bg-violet-50/40 p-2.5 space-y-2">
                                    <div className="flex items-center justify-between gap-2">
                                        <span className="text-[10px] font-bold text-violet-600 uppercase tracking-widest">MiniMax 合成参数</span>
@@ -1617,7 +1650,6 @@ ${isInitialGeneration ? `
                                        value={formData.voiceProfile?.voiceId || ''}
                                        onChange={(e) => handleChange('voiceProfile', {
                                            ...(formData.voiceProfile || {}),
-                                           provider: 'minimax',
                                            voiceId: e.target.value,
                                            voiceName: formData.voiceProfile?.voiceName || '',
                                            source: formData.voiceProfile?.source || 'custom',
@@ -1631,7 +1663,6 @@ ${isInitialGeneration ? `
                                        value={formData.voiceProfile?.model || 'speech-2.8-hd'}
                                        onChange={(e) => handleChange('voiceProfile', {
                                            ...(formData.voiceProfile || {}),
-                                           provider: 'minimax',
                                            voiceId: formData.voiceProfile?.voiceId || '',
                                            voiceName: formData.voiceProfile?.voiceName || '',
                                            source: formData.voiceProfile?.source || 'custom',

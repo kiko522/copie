@@ -7,7 +7,7 @@
  * 调 setTtsProvider() 同步，prompt 侧用 getTtsProvider() 读最新值。
  * （与 minimaxEndpoint 里的 region 单例同一套思路。）
  */
-import type { APIConfig, TtsProvider } from '../types';
+import type { APIConfig, CharacterProfile, TtsProvider } from '../types';
 
 export const normalizeTtsProvider = (raw: unknown): TtsProvider =>
   raw === 'fishaudio' ? 'fishaudio' : raw === 'elevenlabs' ? 'elevenlabs' : 'minimax';
@@ -39,6 +39,20 @@ export function getElevenLabsModel(): string {
 /** 从 apiConfig 解析当前 TTS 服务商（缺省 → minimax）。 */
 export const resolveTtsProvider = (apiConfig?: Pick<APIConfig, 'ttsProvider'> | null): TtsProvider =>
   normalizeTtsProvider(apiConfig?.ttsProvider);
+
+/**
+ * 角色级路由优先，未指定时继承全局默认。
+ * 旧数据中的 `custom` 只表示自定义 MiniMax 音色来源，不应被当成服务商。
+ */
+export const resolveCharacterTtsProvider = (
+  char: Pick<CharacterProfile, 'voiceProfile'> | null | undefined,
+  apiConfig?: Pick<APIConfig, 'ttsProvider'> | null,
+): TtsProvider => {
+  const provider = char?.voiceProfile?.provider;
+  return provider === 'minimax' || provider === 'fishaudio' || provider === 'elevenlabs'
+    ? provider
+    : resolveTtsProvider(apiConfig);
+};
 
 /**
  * 用户自定义「语音表演指南」覆盖。

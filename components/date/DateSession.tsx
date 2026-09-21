@@ -271,7 +271,7 @@ const DateSession: React.FC<DateSessionProps> = ({
     const translateAndSpeak = async (text: string, emotion?: string): Promise<DateSpeechResult | null> => {
         if (!canSynthesizeSpeech(char, apiConfig)) return null;
         try {
-            let ttsText = cleanTextForTtsProvider(text, apiConfig);
+            let ttsText = cleanTextForTtsProvider(text, apiConfig, char);
             if (!ttsText || ttsText.length < 2) return null;
             if (voiceLang) {
                 const langLabel = voiceLanguagePromptLabel(voiceLang);
@@ -297,7 +297,7 @@ const DateSession: React.FC<DateSessionProps> = ({
             });
             return {
                 url,
-                spokenText: stripTtsMarkupForDisplay(ttsText, apiConfig),
+                spokenText: stripTtsMarkupForDisplay(ttsText, apiConfig, char),
             };
         } catch (err: any) {
             console.warn('Date TTS failed:', err?.message);

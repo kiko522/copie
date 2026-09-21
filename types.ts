@@ -248,7 +248,7 @@ export interface VirtualTime {
 
 export type MinimaxRegion = 'domestic' | 'overseas';
 
-// 语音合成（TTS）服务商。全局三选一：切换后聊天语音条 / 约会 / 电话统一用同一家。
+// 语音合成（TTS）服务商。全局值作为默认；角色可在 voiceProfile.provider 中单独覆盖。
 export type TtsProvider = 'minimax' | 'fishaudio' | 'elevenlabs';
 
 export interface VisionApiConfig {
@@ -2922,7 +2922,9 @@ export interface CharacterProfile {
   dreamLogs?: DreamLog[];
 
   voiceProfile?: {
-      provider?: 'minimax' | 'custom';
+      // 角色级 TTS 路由。缺省 / legacy custom 表示继承全局设置。
+      // 聊天、约会、普通电话与实时电话应统一通过 resolveCharacterTtsProvider 读取。
+      provider?: TtsProvider | 'custom';
       voiceId?: string;
       // MiniMax 合成参数版本。缺省/legacy 保持历史效果；natural-v2 需由用户主动开启。
       minimaxParamVersion?: 'legacy' | 'natural-v2';

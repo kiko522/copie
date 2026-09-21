@@ -10,7 +10,7 @@ import { getCachedTts, saveCachedTts } from '../utils/ttsCache';
 import { buildMiniMaxTtsCacheKey, buildMiniMaxTtsPayload, cleanTextForTts, convertHexAudioToBlob, fetchRemoteAudioBlob, getMiniMaxParamVersion, prepareMiniMaxSpeechText, VALID_EMOTIONS, stripEmotionTags, VOICE_ACTING_GUIDE } from '../utils/minimaxTts';
 import { normalizeVoiceTags } from '../utils/sanitize';
 import { FISH_VOICE_ACTING_GUIDE, stripFishMarkupForDisplay } from '../utils/fishAudioTts';
-import { resolveTtsProvider, getElevenLabsModel, getTtsProvider, getVoicePromptOverride } from '../utils/ttsProvider';
+import { resolveCharacterTtsProvider, getElevenLabsModel, getTtsProvider, getVoicePromptOverride } from '../utils/ttsProvider';
 import { getElevenLabsVoiceActingGuide, stripElevenLabsMarkupForDisplay } from '../utils/elevenLabsTts';
 import { canSynthesizeSpeech, stripTtsMarkupForDisplay, synthesizeSpeechDetailed as synthesizeSpeechRoutedDetailed } from '../utils/ttsRouter';
 import { CANTONESE_VOICE_SUPPORT_NOTE, VOICE_LANGUAGE_OPTIONS, voiceLanguageAnalyticsValue, voiceLanguagePromptLabel } from '../utils/voiceLanguage';
@@ -356,8 +356,7 @@ const SoundWaveGlyph = () => (
     ))}
   </span>
 );
-const currentVoiceActingGuide = (): string => {
-  const provider = getTtsProvider();
+const currentVoiceActingGuide = (provider = getTtsProvider()): string => {
   const custom = getVoicePromptOverride(provider);
   if (custom) return custom;
   if (provider === 'fishaudio') return FISH_VOICE_ACTING_GUIDE;
@@ -410,6 +409,7 @@ const buildCallPrompt = (
   voiceLang?: string,
   mode: CallMode = 'voice',
   tz?: string,
+  ttsProvider = getTtsProvider(),
 ) => {
   const resolvedCharName = charName || '你的角色';
   // 电话里角色说的「现在几点 / 今天什么日子」是 ta 那边的时间，跟角色自定义时区走
@@ -477,7 +477,7 @@ const buildCallPrompt = (
 
 你的话会被转成真实语音。不同引擎识别的演出标记不同，严格遵守下面这份**当前引擎规则**；不要混用别家的标签，也不要写会被念出来的小说旁白。
 
-${currentVoiceActingGuide()}
+${currentVoiceActingGuide(ttsProvider)}
 
 ### 历史消息的来源标记（重要）
 
@@ -1213,7 +1213,7 @@ const CallApp: React.FC = () => {
   const resolveVoiceId = () => selectedChar?.voiceProfile?.voiceId?.trim() || '';
   const resolveGroupId = () => (apiConfig.minimaxGroupId || '').trim();
   // ── TTS 服务商分发：MiniMax 保留电话专用分段兜底；Fish / ElevenLabs 走共享适配器。 ──
-  const activeTtsProvider = resolveTtsProvider(apiConfig);
+  const activeTtsProvider = resolveCharacterTtsProvider(selectedChar, apiConfig);
   // 当前服务商下，这个角色能否合成语音（决定要不要走 TTS / 给"语音未配置"提示）。
   const hasConfiguredVoice = (): boolean => {
     return !!selectedChar && canSynthesizeSpeech(selectedChar, apiConfig);
@@ -1909,6 +1909,7 @@ ${sentencePlan}`;
           voiceLang || undefined,
           callMode,
           resolveCharTimeZone(selectedChar),
+          resolveCharacterTtsProvider(selectedChar, apiConfig),
         )
       : buildCallPrompt(userName, undefined, undefined, voiceLang || undefined, callMode);
     const thinkingPrompt = selectedChar?.showThinkingChain
@@ -2244,9 +2245,9 @@ ${sentencePlan}`;
 
       const parsed = extractVoiceTag(target.bubble.text);
       const originalText = stripCallTextFormatting(parsed.display).trim()
-        || stripTtsMarkupForDisplay(parsed.voiceText, apiConfig)
+        || stripTtsMarkupForDisplay(parsed.voiceText, apiConfig, selectedChar)
         || stripCallTextFormatting(target.bubble.text).trim();
-      const spokenText = stripTtsMarkupForDisplay(parsed.voiceText, apiConfig) || originalText;
+      const spokenText = stripTtsMarkupForDisplay(parsed.voiceText, apiConfig, selectedChar) || originalText;
       await saveVoiceFavorite({
         source: 'call',
         sourceKey,
@@ -3411,7 +3412,7 @@ ${sentencePlan}`;
               <div className="text-sm mt-1 leading-relaxed">{(() => {
                 if (item.role !== 'assistant') return item.text;
                 const { display, voiceText } = extractVoiceTag(item.text);
-                const cleanVoice = stripTtsMarkupForDisplay(voiceText, apiConfig);
+                const cleanVoice = stripTtsMarkupForDisplay(voiceText, apiConfig, selectedChar);
                 return <>{renderAssistantLine(display, accentColor)}{cleanVoice && <div className="mt-1 text-[10px] text-white/40 italic">{cleanVoice}</div>}</>;
               })()}</div>
               {item.role === 'assistant' && (
@@ -3448,7 +3449,7 @@ ${sentencePlan}`;
           favorited={voiceFavoriteSaved}
           busy={voiceFavoriteBusy}
           title="通话语音"
-          preview={voiceFavoriteTarget ? (stripCallTextFormatting(extractVoiceTag(voiceFavoriteTarget.bubble.text).display) || stripTtsMarkupForDisplay(extractVoiceTag(voiceFavoriteTarget.bubble.text).voiceText, apiConfig)) : ''}
+          preview={voiceFavoriteTarget ? (stripCallTextFormatting(extractVoiceTag(voiceFavoriteTarget.bubble.text).display) || stripTtsMarkupForDisplay(extractVoiceTag(voiceFavoriteTarget.bubble.text).voiceText, apiConfig, selectedChar)) : ''}
           onToggle={() => void toggleCallVoiceFavorite()}
           onClose={() => { if (!voiceFavoriteBusy) setVoiceFavoriteTarget(null); }}
         />
@@ -3801,7 +3802,7 @@ ${sentencePlan}`;
             <div className={`${sizeClass} whitespace-pre-wrap leading-relaxed ${bubble.role === 'user' ? 'inline-block text-left text-white/90 bg-white/[0.06] border border-white/10 rounded-2xl rounded-tr-sm px-3 py-1.5' : 'text-white/95'}`}>
               {bubble.role === 'assistant' ? (() => {
                 const { display, voiceText } = extractVoiceTag(line || bubble.text);
-                const cleanVoice = stripTtsMarkupForDisplay(voiceText, apiConfig);
+                const cleanVoice = stripTtsMarkupForDisplay(voiceText, apiConfig, selectedChar);
                 return <>
                   {bubble.thinkingChain && (
                     <details className="group mb-2 rounded-xl border border-white/10 bg-white/[0.035] px-2.5 py-2 text-[11px] text-white/55">
@@ -4033,7 +4034,7 @@ ${sentencePlan}`;
         favorited={voiceFavoriteSaved}
         busy={voiceFavoriteBusy}
         title="通话语音"
-        preview={voiceFavoriteTarget ? (stripCallTextFormatting(extractVoiceTag(voiceFavoriteTarget.bubble.text).display) || stripTtsMarkupForDisplay(extractVoiceTag(voiceFavoriteTarget.bubble.text).voiceText, apiConfig)) : ''}
+        preview={voiceFavoriteTarget ? (stripCallTextFormatting(extractVoiceTag(voiceFavoriteTarget.bubble.text).display) || stripTtsMarkupForDisplay(extractVoiceTag(voiceFavoriteTarget.bubble.text).voiceText, apiConfig, selectedChar)) : ''}
         onToggle={() => void toggleCallVoiceFavorite()}
         onClose={() => { if (!voiceFavoriteBusy) setVoiceFavoriteTarget(null); }}
       />

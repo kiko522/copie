@@ -70,7 +70,7 @@ import { playVoiceAudio, primeVoiceAudio, stopVoiceAudio, voicePlaybackErrorMess
 import { voiceLanguageAnalyticsValue, voiceLanguagePromptLabel } from '../utils/voiceLanguage';
 import { fetchBlobForShare, shareOrDownloadBlob } from '../utils/shareExport';
 import { CollaborationStore } from '../features/collaboration/store';
-import { resolveTtsProvider } from '../utils/ttsProvider';
+import { resolveCharacterTtsProvider } from '../utils/ttsProvider';
 import { resolveActiveSound, playWhiteboxSound, unlockWhiteboxAudio } from '../utils/whiteboxSound';
 import { normalizeTranslationLangLabel, isTranslationLangPreset } from '../utils/translationLang';
 import { CharacterGroupFilterBar, filterCharactersByGroup, GROUP_FILTER_ALL } from '../components/character/CharacterGroupFilter';
@@ -573,8 +573,8 @@ const Chat: React.FC = () => {
         // Parse the structured voice output: spoken text (sanitized) + per-message emotion.
         const parsedVoice = parseVoiceOutput(voiceSourceContent);
         // Fish / ElevenLabs 的适配器需要看到原始 inline cue；MiniMax 使用已消毒的 speech。
-        const ttsProvider = resolveTtsProvider(apiConfig);
-        const preserveRawMarkup = providerUsesRawVoiceMarkup(apiConfig);
+        const ttsProvider = resolveCharacterTtsProvider(char, apiConfig);
+        const preserveRawMarkup = providerUsesRawVoiceMarkup(apiConfig, char);
         const voiceTagContent = parsedVoice.hasVoiceTag ? (preserveRawMarkup ? parsedVoice.rawSpeech : parsedVoice.speech) : '';
         const voiceEmotion = parsedVoice.emotion;
 
@@ -639,15 +639,15 @@ const Chat: React.FC = () => {
                 const bilingualIdx = voiceSourceContent.toLowerCase().indexOf('%%bilingual%%');
                 const hasBilingual = bilingualIdx !== -1;
                 if (hasBilingual && voiceLang) {
-                    const langAText = cleanTextForTtsProvider(voiceSourceContent.substring(0, bilingualIdx), apiConfig);
-                    const langBText = stripTtsMarkupForDisplay(voiceSourceContent.substring(bilingualIdx + '%%BILINGUAL%%'.length), apiConfig);
+                    const langAText = cleanTextForTtsProvider(voiceSourceContent.substring(0, bilingualIdx), apiConfig, char);
+                    const langBText = stripTtsMarkupForDisplay(voiceSourceContent.substring(bilingualIdx + '%%BILINGUAL%%'.length), apiConfig, char);
                     if (!langAText || langAText.length < 2) return null;
                     spokenText = langAText;
                     originalText = langBText || '';
                 } else {
-                    spokenText = cleanTextForTtsProvider(voiceSourceContent, apiConfig);
+                    spokenText = cleanTextForTtsProvider(voiceSourceContent, apiConfig, char);
                     if (!spokenText || spokenText.length < 2) return null;
-                    originalText = stripTtsMarkupForDisplay(spokenText, apiConfig) || spokenText;
+                    originalText = stripTtsMarkupForDisplay(spokenText, apiConfig, char) || spokenText;
                     if (voiceLang) {
                         const langLabel = voiceLanguagePromptLabel(voiceLang);
                         const translated = await llmTranslate(`Translate the following text to ${langLabel}. Output ONLY the translation, nothing else.`, originalText);
@@ -664,7 +664,7 @@ const Chat: React.FC = () => {
                 emotion: voiceEmotion,
             });
             // 转文字面板只展示实际台词，不展示当前引擎的停顿 / 表演标记。
-            const displaySpoken = stripTtsMarkupForDisplay(spokenText, apiConfig);
+            const displaySpoken = stripTtsMarkupForDisplay(spokenText, apiConfig, char);
             const storedSpokenText = voiceTagContent ? displaySpoken : (voiceLang ? displaySpoken : undefined);
             const storedLang = voiceLang || undefined;
             // Persist so the voice bar survives leaving and re-entering the chat.
