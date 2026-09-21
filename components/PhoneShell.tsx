@@ -11,8 +11,10 @@ import { IMPORT_IN_PROGRESS_KEY, useOS } from '../context/OSContext';
 import StatusBar from './os/StatusBar';
 import Launcher from '../apps/Launcher';
 import CompanionLockChrome from './os/CompanionLockChrome';
+import LocalPinUnlock from './os/LocalPinUnlock';
 import { loadCompanionFrameStyle } from './os/companionFrameStyles';
 import { createPreloadableLazy, type PreloadableLazy } from './os/preloadableLazy';
+import { isLocalScreenPinEnabled } from '../utils/localScreenPin';
 
 // 按需懒加载各 App —— 切到对应 App 时才下载/解析其代码块，首屏只加载 Launcher 与外壳，
 // 大体积 App（MemoryPalace / Songwriting 等）不再压在主包里。
@@ -461,6 +463,7 @@ const PhoneShell: React.FC = () => {
 
   // 冷启动「世界入场」是否已结束。结束前由 BootSequence 接管整屏（同时取代旧的黑屏 spinner）。
   const [bootDone, setBootDone] = useState(false);
+  const [showLocalPin, setShowLocalPin] = useState(false);
   const bootAnimationEnabled = theme.bootAnimationEnabled !== false;
   useEffect(() => {
     // 本次启动一旦选择跳过，就记为已经完成；用户稍后重新打开开关时不在桌面中途补播。
@@ -848,7 +851,8 @@ const PhoneShell: React.FC = () => {
             if ('Notification' in window && Notification.permission === 'default') {
                 Notification.requestPermission();
             }
-            unlock();
+            if (isLocalScreenPinEnabled()) setShowLocalPin(true);
+            else unlock();
         }}
         className="relative w-full h-full bg-cover bg-center cursor-pointer overflow-hidden group font-light select-none overscroll-none"
         style={{ backgroundImage: lockBgImageValue, color: contentColor, animation: 'lockReveal 600ms ease-out both' }}
@@ -919,6 +923,7 @@ const PhoneShell: React.FC = () => {
           <div className="w-1 h-8 rounded-full bg-gradient-to-b from-transparent to-current"></div>
           <span className="text-[10px] tracking-widest uppercase font-semibold">Tap to Unlock</span>
         </div>}
+        {showLocalPin && <LocalPinUnlock onUnlock={() => { setShowLocalPin(false); unlock(); }} />}
       </div>
     );
   }
