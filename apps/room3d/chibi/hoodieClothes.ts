@@ -8,7 +8,21 @@ export function dressHoodie(rig:ReturnType<typeof bindBlankBody>){
  const body=rig.mesh.geometry,p=body.attributes.position,si=body.attributes.skinIndex,sw=body.attributes.skinWeight;
  const boneIndex=Object.fromEntries(rig.skeleton.bones.map((b,i)=>[b.name,i]));
  const resources:Array<{dispose():void}>=[],meshes:T.SkinnedMesh[]=[];
- data.forEach((part,partIndex)=>{
+ data.forEach((sourcePart,partIndex)=>{
+  const part={positions:[...sourcePart.positions],indices:[...sourcePart.indices]};
+  const legSides:number[]=[];
+  if(partIndex){
+   // Separate the touching boot seam and transfer weights only from its leg.
+   part.positions=[];part.indices=[];const vertices=new Map<string,number>();
+   for(let t=0;t<sourcePart.indices.length;t+=3){
+    const triangle=sourcePart.indices.slice(t,t+3);
+    const side=triangle.reduce((sum,id)=>sum+sourcePart.positions[id*3],0)>=0?1:-1;
+    for(const id of triangle){const key=`${side}:${id}`;let target=vertices.get(key);
+     if(target===undefined){target=part.positions.length/3;vertices.set(key,target);part.positions.push(...sourcePart.positions.slice(id*3,id*3+3));legSides[target]=side;}
+     part.indices.push(target);
+    }
+   }
+  }
   const positions:number[]=[],skinIndex:number[]=[],skinWeight:number[]=[];
   for(let i=0;i<part.positions.length;i+=3){
    const [x,y,z]=part.positions.slice(i,i+3),side=Math.sign(x),ax=Math.abs(x);
@@ -35,7 +49,7 @@ export function dressHoodie(rig:ReturnType<typeof bindBlankBody>){
     continue;
    }
    let nearest=0,distance=Infinity;
-   for(let k=0;k<p.count;k++){const d=(p.getX(k)-v.x)**2+(p.getY(k)-v.y)**2+(p.getZ(k)-v.z)**2;if(d<distance){distance=d;nearest=k;}}
+   for(let k=0;k<p.count;k++){if(partIndex&&Math.sign(p.getX(k))!==legSides[i/3])continue;const d=(p.getX(k)-v.x)**2+(p.getY(k)-v.y)**2+(p.getZ(k)-v.z)**2;if(d<distance){distance=d;nearest=k;}}
    for(let j=0;j<4;j++){let index=si.array[nearest*4+j];
     // The hood belongs to the shoulders, not the head it surrounds.
     if(partIndex===0&&['head','neck'].includes(rig.skeleton.bones[index].name))index=rig.skeleton.bones.indexOf(rig.bones.chest);

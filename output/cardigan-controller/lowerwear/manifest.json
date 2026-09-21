@@ -83,20 +83,22 @@
     "color": "#b3a08a",
     "status": "standalone-tryon",
     "drawCalls": 1,
-    "limitations": []
+    "limitations": [],
+    "bootCover": 0.41
   },
   {
     "id": "cargo",
     "label": "口袋工装裤",
     "source": "stylized humanoid 3d model.glb",
-    "triangles": 1703,
+    "triangles": 2135,
     "hem": 0.3001195192337036,
     "waist": 2.49,
     "skirt": false,
     "color": "#7b856b",
     "status": "standalone-tryon",
     "drawCalls": 1,
-    "limitations": []
+    "limitations": [],
+    "bootCover": 0.6
   },
   {
     "id": "cropped",
@@ -109,6 +111,7 @@
     "color": "#738995",
     "status": "standalone-tryon",
     "drawCalls": 1,
-    "limitations": []
+    "limitations": [],
+    "bootCover": 0.76
   }
 ]

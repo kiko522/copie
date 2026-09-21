@@ -67,8 +67,10 @@ export function createBlankMotion(rig:ReturnType<typeof bindBlankBody>,body:T.Gr
    rotation.setFromEuler(euler.set(-Math.PI/2,0,0));position.set(0,0,0);
   }
   for(const [name,bone] of entries)bone.quaternion.slerp(targets[name],blend);
+  const footwear=body.userData.wardrobeLift as {height:number;applied:number}|undefined;
+  if(footwear){const lift=seated||lying?0:footwear.height;position.y+=lift;footwear.applied=T.MathUtils.lerp(footwear.applied,lift,blend);}
   body.position.lerp(position,blend);body.quaternion.slerp(rotation,blend);
   body.updateWorldMatrix(true,true);rig.skeleton.update();
-  rig.mesh.boundingBox=null;rig.mesh.boundingSphere=null;
+  Object.assign(rig.mesh,{boundingBox:null,boundingSphere:null});
  };
 }

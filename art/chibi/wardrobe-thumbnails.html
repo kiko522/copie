@@ -1,0 +1,96 @@
+<!doctype html>
+<html>
+<body style="margin:0">
+<script type="module">
+import * as T from 'three';
+import {GLTFLoader} from 'three/examples/jsm/loaders/GLTFLoader.js';
+import approvedPose from '../../experiments/chibi/approvedStandingPose.json';
+
+const renderer = new T.WebGLRenderer({antialias:true, alpha:true, preserveDrawingBuffer:true});
+renderer.setSize(320, 320);
+renderer.setPixelRatio(1);
+renderer.outputColorSpace = T.SRGBColorSpace;
+renderer.toneMapping = T.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+renderer.setClearColor(0xffffff, 0);
+document.body.append(renderer.domElement);
+
+const scene = new T.Scene();
+scene.add(new T.HemisphereLight(0xffffff, 0xb2a99b, 2.5));
+const light = new T.DirectionalLight(0xffffff, 3);
+light.position.set(-3, 6, 5);
+scene.add(light);
+const fill = new T.DirectionalLight(0xffffff, 1);
+fill.position.set(3, 2, -2);
+scene.add(fill);
+const camera = new T.OrthographicCamera(-1, 1, 1, -1, .01, 100);
+let current;
+
+function disposeCurrent() {
+  if (!current) return;
+  scene.remove(current);
+  const geometries = new Set(), materials = new Set(), textures = new Set(), skeletons = new Set();
+  current.traverse(o => {
+    if (!o.isMesh) return;
+    geometries.add(o.geometry);
+    if (o.isSkinnedMesh) skeletons.add(o.skeleton);
+    for (const material of Array.isArray(o.material) ? o.material : [o.material]) {
+      materials.add(material);
+      for (const value of Object.values(material)) if (value?.isTexture) textures.add(value);
+    }
+  });
+  for (const resource of [...geometries, ...materials, ...textures, ...skeletons]) resource.dispose();
+}
+
+window.renderGarment = async def => {
+  disposeCurrent();
+  const gltf = await new GLTFLoader().loadAsync('/room3d/wardrobe/' + def.asset);
+  current = gltf.scene;
+  scene.add(current);
+
+  // These clothes were fitted with lowered arms, then inverse-skinned into T
+  // bind space. Photographing that bind mesh makes the armpits look crumpled.
+  // Use exactly the approved standing pose used by the wardrobe preview.
+  for (const [name, value] of Object.entries(approvedPose.state)) {
+    const bone = current.getObjectByName(name);
+    if (!bone) throw Error(`${def.id}: missing pose joint ${name}`);
+    const sign = name.startsWith('L') ? 1 : -1;
+    bone.quaternion.multiply(new T.Quaternion().setFromEuler(new T.Euler(
+      T.MathUtils.degToRad(value[2]),
+      -sign * T.MathUtils.degToRad(value[1]),
+      -sign * T.MathUtils.degToRad(value[0]),
+      'XYZ',
+    )));
+  }
+  current.updateMatrixWorld(true);
+  const bounds = new T.Box3();
+  let pieces = 0;
+  current.traverse(o => {
+    if (!o.isMesh) return;
+    o.visible = o.name.startsWith(def.prefix);
+    if (!o.visible) return;
+    pieces++;
+    o.frustumCulled = false;
+    for (const material of Array.isArray(o.material) ? o.material : [o.material]) material.side = T.DoubleSide;
+    // Recompute from posed vertices; the GLB's cached bounds describe T pose.
+    if (o.isSkinnedMesh) {
+      o.skeleton.update();
+      o.computeBoundingBox();
+    }
+    bounds.union(new T.Box3().setFromObject(o));
+  });
+  const center = bounds.getCenter(new T.Vector3()), size = bounds.getSize(new T.Vector3());
+  const span = Math.max(size.x, size.y, size.z) * .60;
+  if (!pieces || !Number.isFinite(span) || span <= 0) throw Error(`${def.id}: empty or invalid garment bounds`);
+  camera.left = camera.bottom = -span;
+  camera.right = camera.top = span;
+  camera.position.copy(center).add(new T.Vector3(.12, .09, 3));
+  camera.lookAt(center);
+  camera.updateProjectionMatrix();
+  renderer.render(scene, camera);
+  window.thumbnailReport = {id:def.id, pieces, size:size.toArray()};
+  return renderer.domElement.toDataURL('image/png');
+};
+</script>
+</body>
+</html>

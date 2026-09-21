@@ -342,7 +342,7 @@ export function buildBody(source: T.Group, parts: Parts, appearance: 'skin' | 'h
         mesh.geometry=keep(createBlankBody(appearance,hair));
         hairPivot.position.y=fitBlankHeadY(BLANK_HAIR_PIVOT,hair);
         hairPivot.scale.set(BLANK_HEAD_SCALE.x*headSize,BLANK_HAIR_Y_SCALE*BLANK_HEAD_SCALE.y*headSize,BLANK_HAIR_Z_SCALE*BLANK_HEAD_SCALE.z*headSize);
-        rig=bindBlankBody(mesh,hairPivot);keep(rig.skeleton);
+        rig=bindBlankBody(mesh,hairPivot,true);keep(rig.skeleton);
     }
     const smooth=(a:number,b:number,v:number)=>T.MathUtils.smoothstep(v,a,b);
     const blankAnimate=rig?createBlankMotion(rig,body):undefined;

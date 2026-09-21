@@ -1,0 +1,22 @@
+import * as T from 'three';
+import {GLTFExporter} from 'three/examples/jsm/exporters/GLTFExporter.js';
+import {GLTFLoader} from 'three/examples/jsm/loaders/GLTFLoader.js';
+import {mkdirSync,writeFileSync} from 'node:fs';
+import assert from 'node:assert/strict';
+import {createBlankBody} from '../../apps/room3d/chibi/blankBody';
+import {bindBlankBody} from '../../apps/room3d/chibi/blankRig';
+class Reader {result:unknown;onloadend?:()=>void;readAsArrayBuffer(b:Blob){void b.arrayBuffer().then(v=>{this.result=v;this.onloadend?.();});}}
+(globalThis as unknown as {FileReader:unknown}).FileReader=Reader;
+const scene=new T.Scene(),hair=new T.Group();
+const mesh=new T.Mesh(createBlankBody('skin'),Array.from({length:6},()=>new T.MeshStandardMaterial({color:'#eed5c4',roughness:1})));
+mesh.name='CurrentBody';scene.add(mesh,hair);
+const rig=bindBlankBody(mesh,hair,true);rig.setPose('bind');
+scene.updateMatrixWorld(true);rig.skeleton.update();
+const glb=await new GLTFExporter().parseAsync(scene,{binary:true,onlyVisible:true}) as ArrayBuffer;
+const loaded=await new GLTFLoader().parseAsync(glb,'');let triangles=0,bones=0;
+loaded.scene.traverse(o=>{if(o instanceof T.SkinnedMesh){triangles+=o.geometry.index!.count/3;bones=o.skeleton.bones.length;assert.ok(o.geometry.attributes.skinWeight);}});
+assert.equal(triangles,rig.mesh.geometry.index!.count/3);assert.equal(bones,rig.skeleton.bones.length);
+mkdirSync('output/current-body',{recursive:true});
+writeFileSync('output/current-body/current-body.glb',Buffer.from(glb));
+writeFileSync('output/current-body/README.txt',`当前素体 / Current body\n\ncurrent-body.blend：Blender 工程，素体与骨架。\ncurrent-body.glb：通用 GLB，保留蒙皮和骨架。\n\nT 姿势；不含衣服、头发、五官贴图或动画。\n使用当前项目素体，保留已修正的手臂、小腿和手指。\n三角面：${triangles}；骨骼：${bones}（含手指与手臂扭转辅助骨）。\n未额外减面、重拓扑或更改身体比例。\n`);
+console.log(JSON.stringify({triangles,bones,bytes:glb.byteLength}));
