@@ -323,7 +323,7 @@ export function useRealtimeCallSession(config: RealtimeSessionConfig) {
             publishInitParts?.();
             return;
           }
-          if (topic === 'rt.attachment') {
+          if (topic === 'rt.attachment' || topic === 'sully.attachment') {
             // worker → client attachment protocol (read requests /
             // vision-unsupported). Same topic both directions; consume only.
             configRef.current.onAttachmentChannelMessage?.(msg);
