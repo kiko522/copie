@@ -86,6 +86,9 @@ importers:
       jszip:
         specifier: ^3.10.1
         version: 3.10.2
+      livekit-client:
+        specifier: 2.22.0
+        version: 2.22.0(@types/dom-mediacapture-record@1.0.22)
       pdfjs-dist:
         specifier: 3.11.174
         version: 3.11.174
@@ -1026,6 +1029,9 @@ packages:
   '@livekit/mutex@1.1.1':
     resolution: {integrity: sha512-EsshAucklmpuUAfkABPxJNhzj9v2sG7JuzFDL4ML1oJQSV14sqrpTYnsaOudMAw9yOaW53NU3QQTlUQoRs4czw==}
 
+  '@livekit/protocol@1.50.4':
+    resolution: {integrity: sha512-L1uggNQAqyY21smQY8AllyOYbcv9Me9TaxwuLytL1R8ck9nbYPmQLNwEDi3pOFGAMa5F8I2nUi2Jc59W5awxlA==}
+
   '@livekit/protocol@1.51.0':
     resolution: {integrity: sha512-kEDEDaFvIcp5VlYBromdSKMJMEJKfPvXPfEaJPdEz1Qgo84gZAoLF2g58CcMlVYGsjrwE5XYgQxRS5B7KuEj3w==}
 
@@ -1497,6 +1503,9 @@ packages:
 
   '@types/babel__traverse@7.28.0':
     resolution: {integrity: sha512-8PvcXf70gTDZBgt9ptxJ8elBeBjcLOAcOtoO/mPJjtji1+CdGbHgm77om1GrsPxsiE+uXIpNSK64UYaIwQXd4Q==}
+
+  '@types/dom-mediacapture-record@1.0.22':
+    resolution: {integrity: sha512-mUMZLK3NvwRLcAAT9qmcK+9p7tpU2FHdDsntR3YI4+GY88XrgG4XiE7u1Q2LAN2/FZOz/tdMDC3GQCR4T8nFuw==}
 
   '@types/earcut@3.0.0':
     resolution: {integrity: sha512-k/9fOUGO39yd2sCjrbAJvGDEQvRwRnQIZlBz43roGwUZo5SHAmyVvSFyaVVZkicRVCaDXPKlbxrUcBuJoSWunQ==}
@@ -2184,6 +2193,9 @@ packages:
   jose@5.1.2:
     resolution: {integrity: sha512-X7TOC/d8KPvx4wPUuLHVgTSdoWw0UW5TQOUwhvCvj+ZPfsf9vUPhhksYPjNBWVGPQ/6yd/JrL1gQxBnIDwYdFg==}
 
+  jose@6.2.12:
+    resolution: {integrity: sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw==}
+
   joycon@3.1.1:
     resolution: {integrity: sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==}
     engines: {node: '>=10'}
@@ -2249,6 +2261,11 @@ packages:
   lie@3.3.0:
     resolution: {integrity: sha512-UaiMJzeWRlEujzAuw5LokY1L5ecNQYZKfmyZ9L7wDHb/p5etKaxXhohBcrw0EYby+G/NA52vRSN4N39dxHAIwQ==}
 
+  livekit-client@2.22.0:
+    resolution: {integrity: sha512-GLtYQfRh/RsvXaOX1x609bFZ17yyKmKWDqu9JmkMKn9vIFLi2GsapRv9gT8OJO/1R2dsitrkbGmloyUfxWQsaA==}
+    peerDependencies:
+      '@types/dom-mediacapture-record': ^1
+
   livekit-server-sdk@2.19.1:
     resolution: {integrity: sha512-tqjM5oPDDNBrkb/64YReta9UWP32l1a2m0HHXq8WOuEzwxh4zsaXjeZZtPG4Er4eVAk4kjR+EMxH7lPKzg1g6g==}
     engines: {node: '>=19'}
@@ -2256,6 +2273,10 @@ packages:
   locate-path@5.0.0:
     resolution: {integrity: sha512-t7hw9pI+WvuwNJXwk5zVHpyhIqzg2qTlklJOf0mVxGSbe3Fp2VieZcduNYjaLDoy6p9uGpQEGWG87WpMKlNq8g==}
     engines: {node: '>=8'}
+
+  loglevel@1.9.2:
+    resolution: {integrity: sha512-HgMmCqIJSAKqo68l0rS2AanEWfkxaZ5wNiEFb5ggm08lDs9Xl2KxBlX3PTcaD2chBM1gXAYf491/M2Rv8Jwayg==}
+    engines: {node: '>= 0.6.0'}
 
   loose-envify@1.4.0:
     resolution: {integrity: sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q==}
@@ -2694,6 +2715,9 @@ packages:
     engines: {node: '>=18.0.0', npm: '>=8.0.0'}
     hasBin: true
 
+  rxjs@7.8.2:
+    resolution: {integrity: sha512-dhKf903U/PQZY6boNNtAGdWbG85WAbjT/1xYoZIC7FAY0yWapOBQVsVrDl58W86//e1VpMNBtRV4MaXfdMySFA==}
+
   safe-buffer@5.1.2:
     resolution: {integrity: sha512-Gd2UZBJDkXlY7GbJxfsE8/nvKkUEU1G38c1siN6QP6a9PT9MmHB8GnpscSmMJSoF8LOIrt8ud/wPtojys4G6+g==}
 
@@ -2720,6 +2744,13 @@ packages:
 
   scheduler@0.23.2:
     resolution: {integrity: sha512-UOShsPwz7NrMUqhR6t0hWjFduvOzbtv7toDH1/hIrfRNIDBnnBWd0CwJTGvTpngVlmwGCdP9/Zl/tVrDqcuYzQ==}
+
+  sdp-transform@2.15.0:
+    resolution: {integrity: sha512-KrOH82c/W+GYQ0LHqtr3caRpM3ITglq3ljGUIb8LTki7ByacJZ9z+piSGiwZDsRyhQbYBOBJgr2k6X4BZXi3Kw==}
+    hasBin: true
+
+  sdp@3.2.2:
+    resolution: {integrity: sha512-xZocWwfyp4hkbN4hLWxMjmv2Q8aNa9MhmOZ7L9aCZPT+dZsgRr6wZRrSYE3HTdyk/2pZKPSgqI7ns7Een1xMSA==}
 
   secure-json-parse@2.4.0:
     resolution: {integrity: sha512-Q5Z/97nbON5t/L/sH6mY2EacfjVGwrCcSi5D3btRO2GZ8pf1K1UN7Z9H5J57hjVU2Qzxr1xO+FmBhOvEkzCMmg==}
@@ -2914,6 +2945,9 @@ packages:
     resolution: {integrity: sha512-TeTSQ6H5YHvpqVwBRcnLDCBnDOHWYu7IvGbHT6N8AOymcr9PJGjc1GTtiWZTYg0NCgYwvnYWEkVChQAr9bjfwA==}
     engines: {node: '>=16'}
 
+  typed-emitter@2.1.0:
+    resolution: {integrity: sha512-g/KzbYKbH5C2vPkaXGu8DJlHrGKHLsM25Zg9WuC9pMGfuvT+X25tZQWo5fK1BjBm8+UrVE9LDCvaY0CQk+fXDA==}
+
   typescript@5.9.3:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
     engines: {node: '>=14.17'}
@@ -3034,6 +3068,10 @@ packages:
   webidl-conversions@8.0.1:
     resolution: {integrity: sha512-BMhLD/Sw+GbJC21C/UgyaZX41nPt8bUTg+jWyDeg7e7YN4xOM05YPSIXceACnXVtqyEw/LMClUQMtMZ+PGGpqQ==}
     engines: {node: '>=20'}
+
+  webrtc-adapter@9.0.6:
+    resolution: {integrity: sha512-CHbl2ZQbxx164IgWRgzJno4hWtM4tFbRam1QfI3Yxhs3w/DvqluVxVWeXs3oL5/fbGkSNLKo0Ty5MgUWceNhog==}
+    engines: {node: '>=6.0.0', npm: '>=3.10.0'}
 
   whatwg-mimetype@5.0.0:
     resolution: {integrity: sha512-sXcNcHOC51uPGF0P/D4NVtrkjSU2fNsm9iog4ZvZJsL3rjoDAzXZhkm2MWt1y+PUdggKAYVoMAIYcs78wJ51Cw==}
@@ -3915,6 +3953,10 @@ snapshots:
 
   '@livekit/mutex@1.1.1': {}
 
+  '@livekit/protocol@1.50.4':
+    dependencies:
+      '@bufbuild/protobuf': 1.10.0
+
   '@livekit/protocol@1.51.0':
     dependencies:
       '@bufbuild/protobuf': 1.10.0
@@ -4348,6 +4390,8 @@ snapshots:
   '@types/babel__traverse@7.28.0':
     dependencies:
       '@babel/types': 7.29.0
+
+  '@types/dom-mediacapture-record@1.0.22': {}
 
   '@types/earcut@3.0.0': {}
 
@@ -5061,6 +5105,8 @@ snapshots:
 
   jose@5.1.2: {}
 
+  jose@6.2.12: {}
+
   joycon@3.1.1: {}
 
   jpeg-js@0.4.4: {}
@@ -5139,6 +5185,19 @@ snapshots:
     dependencies:
       immediate: 3.0.6
 
+  livekit-client@2.22.0(@types/dom-mediacapture-record@1.0.22):
+    dependencies:
+      '@livekit/mutex': 1.1.1
+      '@livekit/protocol': 1.50.4
+      '@types/dom-mediacapture-record': 1.0.22
+      events: 3.3.0
+      jose: 6.2.12
+      loglevel: 1.9.2
+      sdp-transform: 2.15.0
+      tslib: 2.8.1
+      typed-emitter: 2.1.0
+      webrtc-adapter: 9.0.6
+
   livekit-server-sdk@2.19.1:
     dependencies:
       '@bufbuild/protobuf': 1.10.1
@@ -5148,6 +5207,8 @@ snapshots:
   locate-path@5.0.0:
     dependencies:
       p-locate: 4.1.0
+
+  loglevel@1.9.2: {}
 
   loose-envify@1.4.0:
     dependencies:
@@ -5632,6 +5693,11 @@ snapshots:
       '@rollup/rollup-win32-x64-msvc': 4.60.4
       fsevents: 2.3.3
 
+  rxjs@7.8.2:
+    dependencies:
+      tslib: 2.8.1
+    optional: true
+
   safe-buffer@5.1.2: {}
 
   safe-buffer@5.2.1: {}
@@ -5651,6 +5717,10 @@ snapshots:
   scheduler@0.23.2:
     dependencies:
       loose-envify: 1.4.0
+
+  sdp-transform@2.15.0: {}
+
+  sdp@3.2.2: {}
 
   secure-json-parse@2.4.0: {}
 
@@ -5843,6 +5913,10 @@ snapshots:
 
   type-fest@4.41.0: {}
 
+  typed-emitter@2.1.0:
+    optionalDependencies:
+      rxjs: 7.8.2
+
   typescript@5.9.3: {}
 
   ufo@1.6.4: {}
@@ -5953,6 +6027,10 @@ snapshots:
     optional: true
 
   webidl-conversions@8.0.1: {}
+
+  webrtc-adapter@9.0.6:
+    dependencies:
+      sdp: 3.2.2
 
   whatwg-mimetype@5.0.0: {}
 

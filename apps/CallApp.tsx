@@ -119,6 +119,7 @@ import {
 } from '../utils/companionAvatar';
 import { addCompanionModelOutfit, addUploadedCompanionOutfit } from '../utils/companionWardrobe';
 import VoiceFavoriteActionSheet from '../components/voice/VoiceFavoriteActionSheet';
+import CallRealtimePanel from '../realtime-addon/CallRealtimePanel';
 import { getVoiceFavorite, removeVoiceFavorite, saveVoiceFavorite } from '../utils/voiceFavorites';
 type CallState = 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'ended' | 'error';
 type CallMode = 'voice' | 'video';
@@ -402,7 +403,7 @@ const renderAssistantLine = (text: string, accent = '#8b5cf6') => {
 };
 // 语音/视频通话共用同一个 prompt 构建器：注入的上下文（核心设定、记忆、时间、
 // 历史）完全一致，mode 只切换开头的场景描写——视频里对方能看见你。
-const buildCallPrompt = (
+export const buildCallPrompt = (
   userName: string,
   charName?: string,
   coreContext?: string,
@@ -528,6 +529,13 @@ const CallApp: React.FC = () => {
     catch { return 'voice'; }
   });
   const [callPreferences, setCallPreferences] = useState<CallPreferences>(loadCallPreferences);
+  const [realtimeEngineEnabled, setRealtimeEngineEnabled] = useState(() => {
+    try { return localStorage.getItem('sully-realtime-call-enabled-v1') === 'true'; }
+    catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('sully-realtime-call-enabled-v1', String(realtimeEngineEnabled)); } catch { /* private WebView */ }
+  }, [realtimeEngineEnabled]);
   const [showCallPreferences, setShowCallPreferences] = useState(false);
   const [showCallUpdateAnnouncement, setShowCallUpdateAnnouncement] = useState(shouldShowCallUpdateAnnouncement);
   useEffect(() => saveCallPreferences(callPreferences), [callPreferences]);
@@ -2296,6 +2304,7 @@ ${sentencePlan}`;
   // 默认开启；关闭后 CallApp 会等待用户先说，ChatApp 不受影响。
   const greetingFiredRef = useRef<string | null>(null);
   useEffect(() => {
+    if (realtimeEngineEnabled) return;
     if (!callPreferences.characterInitiative || viewMode !== 'in-call' || bubbles.length > 0) return;
     if (!selectedChar?.id || greetingFiredRef.current === currentSessionId) return;
     greetingFiredRef.current = currentSessionId;
@@ -2365,7 +2374,7 @@ ${sentencePlan}`;
         setErrorMessage(error?.message || '开场白生成失败');
       }
     })();
-  }, [viewMode, currentSessionId, callPreferences.characterInitiative]);
+  }, [viewMode, currentSessionId, callPreferences.characterInitiative, realtimeEngineEnabled]);
 
   const handleAvatarTouch = (hit: AvatarTouchHit) => {
     const character = selectedChar;
@@ -2803,6 +2812,7 @@ ${sentencePlan}`;
   // 默认关闭；“谁先开口”只决定刚接通时的第一句话。
   const idleNudgeBusyRef = useRef(false);
   const fireIdleNudge = async () => {
+    if (realtimeEngineEnabled) return;
     if (!callPreferences.idleNudgeEnabled || idleNudgeBusyRef.current || !selectedChar?.id) return;
     if (document.visibilityState === 'hidden') return;
     idleNudgeBusyRef.current = true;
@@ -2879,13 +2889,14 @@ ${sentencePlan}`;
     }
   };
   useEffect(() => {
+    if (realtimeEngineEnabled) return;
     if (!callPreferences.idleNudgeEnabled) return;
     if (viewMode !== 'in-call' || callState !== 'listening' || isAudioPlaying) return;
     if (!bubbles.length || idleNudgeCountRef.current >= 2 || idleNudgeBusyRef.current) return;
     const silenceMs = 50_000 + Math.random() * 30_000 + idleNudgeCountRef.current * 40_000;
     const timer = window.setTimeout(() => { void fireIdleNudge(); }, silenceMs);
     return () => window.clearTimeout(timer);
-  }, [viewMode, callState, isAudioPlaying, bubbles, draftInput, callPreferences.idleNudgeEnabled]);
+  }, [viewMode, callState, isAudioPlaying, bubbles, draftInput, callPreferences.idleNudgeEnabled, realtimeEngineEnabled]);
 
   // 用户在舞台上拖拽/缩放后的构图，写回角色的 videoAvatar 持久化。
   const handleStageFramingChange = (framing: AvatarStageFraming) => {
@@ -2961,6 +2972,43 @@ ${sentencePlan}`;
       </div>
     </div>
   ) : null;
+
+  const buildRealtimePayload = async () => {
+    if (!selectedChar) throw new Error('请先选择通话角色');
+    const provider = resolveCharacterTtsProvider(selectedChar, apiConfig);
+    const profile = selectedChar.voiceProfile;
+    const voiceId = provider === 'elevenlabs'
+      ? profile?.elevenLabsVoiceId
+      : provider === 'fishaudio'
+        ? profile?.fishReferenceId
+        : profile?.voiceId;
+    if (!voiceId?.trim()) throw new Error(`${selectedChar.name} 尚未配置 ${provider} 音色 ID`);
+    const model = provider === 'elevenlabs'
+      ? (apiConfig.elevenLabsModel || 'eleven_flash_v2_5')
+      : provider === 'fishaudio'
+        ? (profile?.fishModel || apiConfig.fishAudioModel || 's2.1-pro')
+        : (profile?.model || 'speech-2.6-hd');
+    const history = (await loadCharacterContextMessages(selectedChar))
+      .filter(message => message.role === 'user' || message.role === 'assistant')
+      .slice(-80)
+      .map(message => ({ role: message.role as 'user' | 'assistant', content: String(message.content || '') }))
+      .filter(message => message.content.trim());
+    return {
+      instructions: buildCallPrompt(
+        userProfile?.name?.trim() || '用户',
+        selectedChar.name,
+        ContextBuilder.buildCoreContext(selectedChar, userProfile, true, undefined, undefined, { conversational: true }),
+        voiceLang || undefined,
+        callMode,
+        resolveCharTimeZone(selectedChar),
+        provider,
+      ),
+      ...(callPreferences.characterInitiative ? { greeting: `电话已经接通。请以${selectedChar.name}的身份自然地先说一句开场白。` } : {}),
+      stt: { provider: 'groq', model: 'whisper-large-v3-turbo', language: voiceLang || 'zh' },
+      tts: { provider, model, voiceId: voiceId.trim() },
+      history,
+    };
+  };
   const vroidBetaOverlay = pendingVRoidImport ? (
     <VRoidBetaWarning
       fileName={pendingVRoidImport.file.name}
@@ -3262,6 +3310,18 @@ ${sentencePlan}`;
                 </details>
               </div>
             )}
+            <button
+              onClick={() => setRealtimeEngineEnabled(value => !value)}
+              className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-white/[0.035] px-3.5 py-3 text-left"
+            >
+              <span>
+                <span className="block text-xs text-white/80">实时语音通话</span>
+                <span className="mt-0.5 block text-[9px] text-white/35">LiveKit · Groq 听写 · 按角色选择音色</span>
+              </span>
+              <span className="rounded-full px-2.5 py-1 text-[10px] font-semibold" style={realtimeEngineEnabled ? { background: `${accentColor}33`, color: accentColor } : { background: 'rgba(255,255,255,.07)', color: 'rgba(255,255,255,.4)' }}>
+                {realtimeEngineEnabled ? '已开启' : '传统模式'}
+              </span>
+            </button>
             <button onClick={requestSelectedCall}
               className="relative w-full py-3.5 rounded-2xl overflow-hidden transition active:scale-[0.98]"
               style={{ background: `linear-gradient(to right, ${accentColor}26, ${accentColor}4d, ${accentColor}26)`, border: `1px solid ${accentColor}80`, boxShadow: `0 0 22px ${accentColor}40` }}>
@@ -3454,6 +3514,40 @@ ${sentencePlan}`;
           onClose={() => { if (!voiceFavoriteBusy) setVoiceFavoriteTarget(null); }}
         />
       </div>
+    );
+  }
+  if (viewMode === 'in-call' && realtimeEngineEnabled && selectedChar) {
+    return (
+      <CallRealtimePanel
+        characterId={selectedChar.id}
+        characterName={selectedChar.name}
+        accentColor={accentColor}
+        buildSessionInitPayload={buildRealtimePayload}
+        onUserFinal={async text => {
+          await DB.saveMessage({
+            charId: selectedChar.id,
+            role: 'user',
+            type: 'text',
+            content: text,
+            metadata: { source: 'call', callSessionId: currentSessionId, realtime: true },
+          });
+          markCallTurnDirty();
+        }}
+        onAgentItem={async (text, interrupted) => {
+          await DB.saveMessage({
+            charId: selectedChar.id,
+            role: 'assistant',
+            type: 'text',
+            content: text,
+            metadata: { source: 'call', callSessionId: currentSessionId, realtime: true, interrupted },
+          });
+          markCallTurnDirty();
+        }}
+        onClose={() => {
+          setViewMode('role-select');
+          addToast('实时通话已结束，对话已保存', 'success');
+        }}
+      />
     );
   }
   const waveActive = displayCallState === 'speaking' || displayCallState === 'thinking';

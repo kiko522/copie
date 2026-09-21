@@ -33,6 +33,14 @@ export interface CompanionCharacterStatus {
   recentExperiences: CompanionExperienceSummary[];
 }
 
+export interface RealtimeTokenResponse {
+  token: string;
+  livekitUrl: string;
+  room: string;
+  identity: string;
+  expiresIn: number;
+}
+
 const STORAGE_KEY = 'sully_companion_backend_config_v1';
 export const COMPANION_BACKEND_CONFIG_CHANGED = 'sully:companion-backend-config-changed';
 
@@ -146,3 +154,13 @@ export const setCompanionCharacterHeartbeatEnabled = async (charId: string, enab
     body: JSON.stringify({ enabled }),
   });
 };
+
+/**
+ * 由已认证的个人陪伴后端签发短期 LiveKit 入场票。
+ * LiveKit API Secret 永远不会进入浏览器或仓库。
+ */
+export const issueRealtimeToken = async (characterId: string, identity?: string): Promise<RealtimeTokenResponse> =>
+  request('/v1/realtime/token', {
+    method: 'POST',
+    body: JSON.stringify({ characterId, ...(identity ? { identity } : {}) }),
+  });
