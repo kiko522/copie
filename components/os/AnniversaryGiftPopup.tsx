@@ -1,5 +1,4 @@
 import { trackEvent } from '../../utils/analytics';
-import { trackAnniversaryDownload } from '../../utils/sarAnalytics';
 import React, { useEffect, useRef, useState } from 'react';
 import { NOSTALGIA_APPEARANCE, useOS } from '../../context/OSContext';
 import { PRESET_THEMES } from '../chat/ChatConstants';
@@ -113,14 +112,14 @@ export default function AnniversaryGiftPopup({ onClose }: { onClose: () => void 
       const result = await shareOrDownloadBlob({
         blob, fileName: ANNIVERSARY_DOWNLOAD_NAME, shareTitle: 'SullyOS·糯米机 一周年赠礼',
       });
-      trackAnniversaryDownload(result);
+      trackEvent('下载周年赠礼', { result });
       if (result !== 'cancelled') {
         setDownloaded(true);
         addToast(result === 'shared' ? '已打开赠礼保存面板，内含三张原图与作者署名' : '已下载三张原图与作者署名，解压后即可自行上传', 'success');
       }
       // Keep the gift open: downloading need not prevent applying it as well.
     } catch {
-      trackAnniversaryDownload('failed');
+      trackEvent('下载周年赠礼', { result: 'failed' });
       setError('图片下载未完成，请稍后重试。');
     } finally {
       busyRef.current = false;

@@ -3479,7 +3479,6 @@ const CompanionHome: React.FC = () => {
               <span className="companion-dock-primary-label text-[9px] font-semibold tracking-[0.18em] sm:text-[10px]" style={{ color: uiTint }}>功能</span>
             </button>
             {[
-              { id: AppID.VRWorld, icon: Icons.VRWorld, label: '彼方' },
               { id: AppID.Settings, icon: Icons.Settings, label: '设置' },
             ].map(item => (
               <button key={item.id} onClick={() => launchCompanionApp(item.id)} className="companion-dock-item flex h-full flex-col items-center justify-center gap-1 text-white/90 active:scale-[.97]">

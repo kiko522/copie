@@ -5,11 +5,11 @@ import { installTranslateCrashGuard } from './utils/translateCrashGuard';
 import { ActiveMsgRuntime } from './utils/activeMsgRuntime';
 import { KeepAlive } from './utils/keepAlive';
 import { ProactiveChat } from './utils/proactiveChat';
-import { VRScheduler } from './utils/vrWorld/scheduler';
 import { installIOSStandaloneWorkaround } from './utils/iosStandalone';
 import { installWakeListener } from './utils/proactivePushConfig';
 import { initAnalytics } from './utils/analytics';
 import { Capacitor } from '@capacitor/core';
+import { CompanionBackendRuntime } from './utils/companionBackendRuntime';
 
 // 默认构建不开启时 Rollup 会整段裁掉；普通浏览器/PWA 不加载原生插件、不申请权限。
 if (import.meta.env.VITE_AMSG_NATIVE_PUSH === 'true' && Capacitor.isNativePlatform()) {
@@ -24,14 +24,13 @@ if (import.meta.env.VITE_AMSG_NATIVE_PUSH === 'true' && Capacitor.isNativePlatfo
 KeepAlive.init().then(() => {
   // Resume any active proactive schedule after SW is ready
   ProactiveChat.resume();
-  // Resume 「彼方」 autonomous-login schedules
-  VRScheduler.resume();
   void ActiveMsgRuntime.init();
   // Record every wake the SW reports so the diagnostic panel can show "last received".
   installWakeListener();
 });
 
 installIOSStandaloneWorkaround();
+CompanionBackendRuntime.init();
 
 // 使用统计。构建时没配 VITE_UMAMI_* 就整个不生效，自部署实例默认如此。
 // 用户关掉开关、或浏览器开了 DNT，同样在这里就返回，连脚本都不会挂上去。

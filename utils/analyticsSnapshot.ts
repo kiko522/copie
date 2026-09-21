@@ -1,7 +1,3 @@
-import { loadChatInputPreferences } from './chatInputPreferences';
-import { readSARClubState, sarRoomView } from './vrWorld/sarClub';
-import { ANNIVERSARY_SEEN_KEY } from './anniversaryGifts';
-import { readFishingMarketState } from './vrWorld/fishingMarket';
 /**
  * 使用统计 · 会话级快照的收集层。
  *
@@ -42,7 +38,6 @@ import { getLuckinToken, isLuckinEnabled } from './luckinMcpClient';
 import { getMcdToken, isMcdEnabled } from './mcdMcpClient';
 import { getPendingTasks, isAmsg2EnabledForChar } from './amsg2Tasks';
 import { ActiveMsgStore } from './activeMsgStore';
-import { getVRApi } from './vrWorld/vrApi';
 import { isBuiltinSullyLive2D } from './builtinSullyLive2D';
 
 /** 布尔开关转「开 / 关」，带默认值。 */
@@ -212,7 +207,6 @@ export function collectCharSettings(
         隐藏系统日志: anyOn(x => x.hideSystemLogs),
         见面轻阅读: anyOn(x => x.dateLightReading),
         观测协议: anyOn(x => x.dateObserve?.enabled),
-        彼方自主登入: anyOn(x => x.vrState?.enabled),
         提示音绑白框: anyOn(x => x.chatSoundBound),
         // ── 开关：默认开的，问有没有人特意关掉 ──
         时间感知: anyOn(x => x.timeAwarenessEnabled, true),
@@ -378,43 +372,6 @@ function hasLocalJsonConfig(key: string): boolean {
     }
 }
 
-/** 存档内已完成 + 当前未完成的剧情去重；回顾不会增加数量，不收剧情 ID。 */
-function collectSARDialogueCounts(): Record<string, string> {
-    try {
-        const npcs = readFishingMarketState().sarFamiliarity?.npcs;
-        const count = (npc: 'caian' | 'aiven'): string => {
-            const progress = npcs?.[npc];
-            const ids = new Set(Object.keys(progress?.completed || {}));
-            if (progress?.pending?.sceneId) ids.add(progress.pending.sceneId);
-            const n = ids.size;
-            return n === 0 ? '0' : n <= 5 ? '1–5' : n <= 10 ? '6–10' : n <= 20 ? '11–20'
-                : n <= 30 ? '21–30' : n <= 40 ? '31–40' : '41+';
-        };
-        return { 凯恩已触发对话数: count('caian'), 艾文已触发对话数: count('aiven') };
-    } catch {
-        // 坏档或存储不可读不应变成「没玩过」，也不能阻断其他快照。
-        return { 凯恩已触发对话数: '读取失败', 艾文已触发对话数: '读取失败' };
-    }
-}
-
-/** SAR 发布功能单独参与冷启动轮转，不加宽原有功能快照。 */
-export function collectSARFeatureFlags(): Record<string, string> {
-    const input = loadChatInputPreferences();
-    const sar = readSARClubState();
-    return {
-        // ── SAR / 输入习惯 / 周年赠礼：只上报固定状态 ──
-        发送键生成: onOff(input.sendButtonGenerates),
-        回车发送: onOff(input.enterToSend),
-        自动回复: onOff(input.autoReply),
-        SAR角色: sar.npcPreference === 'show' ? '开' : sar.npcPreference === 'hide' ? '关' : '未选择',
-        SAR房间显示: sarRoomView(sar) === 'names-hidden' ? '隐藏名字' : sarRoomView(sar) === 'text-hidden' ? '隐藏文字' : sarRoomView(sar) === 'characters-hidden' ? '隐藏角色' : '全部显示',
-        SAR简易钓鱼: isLocalFlagOn('vr_fishing_simple_mode', 'true') ? '开' : '关',
-        SAR对话配色: isLocalFlagOn('vr_sar_session_theme_v1', 'dark') ? '深色' : '浅色',
-        周年赠礼已阅: isLocalFlagOn(ANNIVERSARY_SEEN_KEY, '1') ? '是' : '否',
-        ...collectSARDialogueCounts(),
-    };
-}
-
 /** OSContext 手上有、这里读不到的那部分状态。 */
 export interface FeatureSources {
     realtimeConfig: RealtimeConfig;
@@ -424,8 +381,6 @@ export interface FeatureSources {
     apiConfig: APIConfig;
     /** 用户存了几条 API 线路预设。只用条数，一条内容都不看。 */
     apiPresetCount: number;
-    /** 彼方有没有另配独立线路。存在 IndexedDB，得由调用方 await 出来。 */
-    vrIndependentApi: boolean;
     /** 全部角色。只数「开了主动消息 2.0 的有几个」，角色内容一个字都不碰。 */
     characters: CharacterProfile[];
     /**
@@ -524,7 +479,6 @@ export function collectFeatureFlags(src: FeatureSources): Record<string, string>
             : '没配',
         API线路预设数: bucketFewCount(src.apiPresetCount),
         自习室独立线路: hasLocalJsonConfig('study_api_config') ? '配了' : '没配',
-        彼方独立线路: src.vrIndependentApi ? '配了' : '没配',
 
         // ── 主动消息 2.0 ──
         // 没报「主动消息 Push 加速」：那一层已经全局下线（proactivePushConfig.ts 的
@@ -553,20 +507,17 @@ export function collectFeatureFlags(src: FeatureSources): Record<string, string>
 }
 
 /**
- * collectFeatureFlags 的异步外壳：把要去 IndexedDB 取的那一项先取回来。
- * 调用方（OSContext）只管把自己 state 里那几份递进来，不必知道彼方的独立线路
- * 存在哪、要不要 await。
+ * collectFeatureFlags 的异步外壳：先取得需要异步读取的统计项。
  */
 export async function collectFeatureFlagsAsync(
-    src: Omit<FeatureSources, 'vrIndependentApi' | 'amsg2Global' | 'collaborationUsage'>,
+    src: Omit<FeatureSources, 'amsg2Global' | 'collaborationUsage'>,
 ): Promise<Record<string, string>> {
     // 读不出来就当没配。为一条统计去打断启动流程不值得。
-    const [vrIndependentApi, amsg2Global, collaborationUsage] = await Promise.all([
-        getVRApi().then(cfg => Boolean(cfg)).catch(() => false),
+    const [amsg2Global, collaborationUsage] = await Promise.all([
         ActiveMsgStore.getGlobalConfig().catch(() => ({ workerUrl: '' })),
         import('../features/collaboration/store')
             .then(module => module.CollaborationStore.getUsageCounts())
             .catch(() => ({ sessions: 0, messages: 0, assets: 0 })),
     ]);
-    return collectFeatureFlags({ ...src, vrIndependentApi, amsg2Global, collaborationUsage });
+    return collectFeatureFlags({ ...src, amsg2Global, collaborationUsage });
 }

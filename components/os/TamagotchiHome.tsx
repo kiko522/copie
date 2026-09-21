@@ -643,11 +643,10 @@ const DayScroll = React.memo<{ slots: { time: string; text: string; passed: bool
     </>
 ));
 
-// ─── 右侧世界之门：家园 / 彼方 / 梦境——细线胶囊，跟随界面风格 + ◆连饰 ───
-const WorldPortals = React.memo<{ onHome: () => void; onKanata: () => void; onDream: () => void }>(({ onHome, onKanata, onDream }) => {
+// ─── 右侧世界之门：家园 / 梦境——细线胶囊，跟随界面风格 + ◆连饰 ───
+const WorldPortals = React.memo<{ onHome: () => void; onDream: () => void }>(({ onHome, onDream }) => {
     const portals = [
         { key: 'home', label: '家园', en: 'HOME', icon: ICON.door, onClick: onHome },
-        { key: 'kanata', label: '彼方', en: 'KANATA', icon: <Icons.VRWorld className="w-full h-full" />, onClick: onKanata },
         { key: 'dream', label: '梦境', en: 'DREAM', icon: ICON.moon, onClick: onDream },
     ];
     return (
@@ -1016,7 +1015,6 @@ const TamagotchiHome: React.FC = () => {
     const openChat = useCallback(() => openApp(AppID.Chat), [openApp]);
     // 世界化入口：带意图打开小屋 App（RoomApp 挂载时消费，落到对应分区 / 开梦境）
     const openHomeland = useCallback(() => { roomLaunch.request({ tab: 'worldHome' }); openApp(AppID.Room); }, [openApp]);
-    const openKanata = useCallback(() => openApp(AppID.VRWorld), [openApp]);
     const openDream = useCallback(() => { if (char) { roomLaunch.request({ charId: char.id, openDream: true }); openApp(AppID.Room); } }, [char, openApp]);
     const switchChar = useCallback(() => {
         if (characters.length < 2 || !char) return;
@@ -1196,7 +1194,7 @@ const TamagotchiHome: React.FC = () => {
                     {scrollOpen && <DayScroll slots={scrollSlots} onPeek={runTheater} onClose={() => setScrollOpen(false)} />}
 
                     {/* 右侧世界之门：家园 / 像素家园 / 梦境 */}
-                    <WorldPortals onHome={openHomeland} onKanata={openKanata} onDream={openDream} />
+                    <WorldPortals onHome={openHomeland} onDream={openDream} />
 
                     {/* 地板上的 ta 的手机（未读会亮；点开小弹窗，一键去回） */}
                     <FloorPhone unread={charUnread} open={phoneOpen} msgs={stat.recent}

@@ -19,7 +19,6 @@ export enum AppID {
   Social = 'social',
   Study = 'study',
   FAQ = 'faq',
-  Game = 'game',
   Worldbook = 'worldbook', 
   Novel = 'novel', 
   Bank = 'bank', // New App
@@ -30,12 +29,10 @@ export enum AppID {
   Call = 'call', // 语音电话测试（MiniMax TTS）
   VoiceDesigner = 'voice_designer', // 捏声音 — MiniMax 音色设计器
   Guidebook = 'guidebook', // 攻略本 — 角色攻略用户小游戏
-  LifeSim = 'lifesim', // 模拟人生 — 与角色共同经营的小世界
   MemoryPalace = 'memory_palace', // 记忆宫殿 — 七个房间可视化
   Handbook = 'handbook', // 手账 — 跨角色聚合的生活留痕本（LLM 代笔 + 角色生活流陪伴）
   QQBridge = 'qq_bridge', // QQ 桥接 — 通过 NapCat 把 QQ 私聊接入当前角色，共享 IndexedDB 上下文
   HotNews = 'hot_news', // 热点 — 分时段召回的多平台热榜可视化（决定角色可能聊起的话题）
-  VRWorld = 'vrworld', // 彼方 — 角色自主登入的虚拟世界（定时驱动，房间里看小说/听歌/留言，产出活动卡注入聊天+记忆）
   CharCreatorDev = 'char_creator_dev', // 捏脸系统开发模式 — 仅开发模式可见，向捏人器指定类目追加自定义部件
   WorldHome = 'world_home', // 家园 — 同世界观多角色共同生活的大世界（观测驱动演绎，每角色独立 LLM 调用 + NPC 世界引擎）
 }
@@ -2272,27 +2269,25 @@ export interface SpecialMomentRecord {
 
 // --- QQ捏人工坊（神经链接） ---
 
-/** 工坊槽位：room=小小窝房间立绘 / vr=彼方 chibi / like520=特别时光 520 大头贴 */
-export type ChibiStudioSlotId = 'room' | 'vr' | 'like520';
+/** 工坊槽位：room=小小窝房间立绘 / like520=特别时光 520 大头贴 */
+export type ChibiStudioSlotId = 'room' | 'like520';
 
 export interface ChibiStudioSlot {
     /** 捏人器导出的完整 state（选件+换色+翻转…），再编辑时经 init.savedState 整套还原 */
     state?: any;
     /**
-     * 透明 PNG dataURL 兜底展示图。room/vr 的形象本体以各 App 自己的字段为准
-     * （sprites.chibi / vrState.chibi.img）；like520 未通关时靠这里展示 + 预填活动捏人器。
+     * 透明 PNG dataURL 兜底展示图；like520 未通关时靠这里展示并预填活动捏人器。
      */
     img?: string;
     updatedAt?: number;
 }
 
 /**
- * QQ捏人工坊：统一管理一只角色在三处的 Q 版形象，可各捏各的、也可一键同步。
+ * QQ捏人工坊：统一管理角色的 Q 版形象，可各捏各的、也可一键同步。
  * 图片本体写进各 App 自己的消费字段，这里主要存「再编辑用的完整 state」。
  */
 export interface ChibiStudioData {
     room?: ChibiStudioSlot;
-    vr?: ChibiStudioSlot;
     like520?: ChibiStudioSlot;
 }
 

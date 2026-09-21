@@ -53,7 +53,6 @@ import { normalizeAssistantActionFormatting } from './assistantActionFormat';
 import { markAmsgStateDirty } from './amsgStateSync';
 import { announceScheduleChanges, applyAssistantScheduleChanges } from './scheduleChange';
 import { isBlobRef } from './blobRef';
-import { consumeSARChatSurfaceChunk, type SARModuleSurfaceMeta } from './vrWorld/sarModuleRuntime';
 import { stripLeakedSourceTags } from './sanitize';
 
 // ─── 模块内辅助 ──────────────────────────────────────────────────────────────
@@ -88,70 +87,6 @@ const normalizeAiContent = (raw: string): string => {
     // Strip source tags leaked from history context, including model-mutated forms such as [聊chat].
     cleaned = stripLeakedSourceTags(cleaned);
     return cleaned;
-};
-
-/**
- * 把 SAR 的 CHAR_SURFACE 按“最终会落库的 Chat 气泡”拆开。
- *
- * 这里不能只按换行切：内置翻译模式的一组 <原文>/<译文> 最终会合并成一条
- * `原文\n%%BILINGUAL%%\n译文` 消息；语音块 + 字幕也必须保持一个原子气泡。
- * 这份拆法刻意和 renderAndPersist 保持一致，surface 才不会在特殊模式里串到下一泡。
- */
-export const splitSARChatSurfaceBubbles = (raw: string): string[] => {
-    // Match canonical preprocessing before splitting. History-style stickers must
-    // become emoji tokens, not text chunks that consume the next speech's slot.
-    // This only normalizes display text; surface commands are never executed.
-    const withoutShares = extractMimickedXhsShares(normalizeAiContent(raw)).cleanedContent;
-    const withoutCards = extractHtmlBlocks(withoutShares).cleanedContent;
-    let content = ChatParser.sanitize(withoutCards, { keepCitations: true });
-    // Only speech takes a surface slot. Card/action directives belong to canonical;
-    // keep emoji tokens just long enough for splitResponse to exclude them too.
-    content = content.replace(/\[\[(?!SEND_EMOJI:)[\s\S]*?\]\]/g, '').trim();
-    if (!content) return [];
-
-    const chunks: string[] = [];
-    const appendPlain = (segment: string) => {
-        for (const part of ChatParser.splitResponse(segment)) {
-            if (part.type !== 'text') continue;
-            const rawBlocks = part.content.split(/^\s*---\s*$/m).filter(block => block.trim());
-            const blocks = rawBlocks.length > 0 ? rawBlocks : [part.content];
-            for (const block of blocks) {
-                for (const chunk of ChatParser.chunkText(block.trim())) {
-                    const clean = ChatParser.sanitize(chunk);
-                    if (clean && ChatParser.hasDisplayContent(clean)) chunks.push(clean);
-                }
-            }
-        }
-    };
-
-    const tagPattern = /<翻译>\s*<原文>([\s\S]*?)<\/原文>\s*<译文>([\s\S]*?)<\/译文>\s*<\/翻译>/g;
-    if (!tagPattern.test(content)) {
-        appendPlain(content);
-        return chunks;
-    }
-
-    tagPattern.lastIndex = 0;
-    let lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = tagPattern.exec(content)) !== null) {
-        const textBefore = content.slice(lastIndex, match.index).trim();
-        if (textBefore) appendPlain(textBefore);
-
-        // 表情是独立消息，不参与文字 surface 的序号；与真正落库分支保持一致。
-        const stripEmoji = (value: string) => value.replace(/\[\[SEND_EMOJI:\s*.*?\]\]/g, '').trim();
-        const original = ChatParser.sanitize(stripEmoji(match[1]));
-        const translated = ChatParser.sanitize(stripEmoji(match[2]));
-        if (original || translated) {
-            chunks.push(original && translated
-                ? `${original}\n%%BILINGUAL%%\n${translated}`
-                : (original || translated));
-        }
-        lastIndex = match.index + match[0].length;
-    }
-
-    const textAfter = content.slice(lastIndex).trim();
-    if (textAfter) appendPlain(textAfter.replace(/<\/?翻译>|<\/?原文>|<\/?译文>/g, '').trim());
-    return chunks;
 };
 
 /**
@@ -575,8 +510,6 @@ export interface PostProcessCtx {
      * 在线送达 vs 离线补收的判定见 activeMsgRuntime.resolveInboxPersistTimestamp。
      */
     messageTimestamp?: number;
-    /** SAR 模块的纯展示层。canonical 正文仍走 rawAiContent 的完整后处理与落库。 */
-    sarModuleSurface?: SARModuleSurfaceMeta;
 }
 
 // ─── 主入口 ─────────────────────────────────────────────────────────────────
@@ -608,7 +541,6 @@ export async function applyAssistantPostProcessing(
         directives,
         reasoningContent: pushReasoningContent,
         messageTimestamp,
-        sarModuleSurface,
     } = ctx;
     const { baseUrl, headers, effectiveApi } = api;
     // 拟人打字延迟：流式预览已实时展示过气泡时（instantRender）跳过，避免二次慢放
@@ -793,27 +725,10 @@ export async function applyAssistantPostProcessing(
 
     // 把一段文本 (parseAndExecuteActions / HTML 之外的部分) 渲染成气泡并落库 —— 双语 / 表情 / 引用 / 分段
     // 与原 inline 末尾逻辑一致。抽出来是为了让"执行功能前的本轮正文 A"能在二轮前先展示, 二轮结果 B 复用同一套。
-    let sarSurfaceClaimed = false;
     const renderAndPersist = async (rawContent: string, firstThinkingChain: string | null): Promise<void> => {
         let firstMeta: any = firstThinkingChain ? { thinkingChain: firstThinkingChain } : null;
-        const surfaceChunks = !sarSurfaceClaimed && sarModuleSurface?.surface
-            ? splitSARChatSurfaceBubbles(sarModuleSurface.surface)
-            : [];
-        if (surfaceChunks.length > 0) sarSurfaceClaimed = true;
-        let surfaceIndex = 0;
-        const takeMeta = (base: any, canonicalChunk?: string): any => {
-            let surfaceChunk: string | undefined;
-            if (canonicalChunk !== undefined) {
-                const aligned = consumeSARChatSurfaceChunk(canonicalChunk, surfaceChunks, surfaceIndex);
-                surfaceChunk = aligned.surface;
-                surfaceIndex = aligned.nextIndex;
-            }
-            const sarMeta = surfaceChunk && sarModuleSurface
-                ? { sarModuleSurface: { ...sarModuleSurface, surface: surfaceChunk } }
-                : undefined;
-            const merged = firstMeta || sarMeta
-                ? { ...(base || {}), ...(sarMeta || {}), ...(firstMeta || {}) }
-                : base;
+        const takeMeta = (base: any, _canonicalChunk?: string): any => {
+            const merged = firstMeta ? { ...(base || {}), ...firstMeta } : base;
             firstMeta = null;
             return merged;
         };

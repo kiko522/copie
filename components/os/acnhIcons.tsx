@@ -62,7 +62,6 @@ const ACNH_ICON_MAP: Partial<Record<AppID, React.ReactNode>> = {
     <circle cx="32" cy="45.5" r="6" fill={BROWN} /><circle cx="50" cy="45.5" r="6" fill={BROWN} /><circle cx="68" cy="45.5" r="6" fill={BROWN} />
   </>),
   [AppID.Character]: draw([20, 15, 80, 86], faceGlyph),
-  [AppID.LifeSim]: draw([20, 15, 80, 86], faceGlyph),
   [AppID.MemoryPalace]: draw([14, 18, 86, 84], <>
     <path d="M50 18 L86 46 H14 Z" fill={CREAM} />
     <rect x="24" y="46" width="52" height="38" rx="5" fill={CREAM} />
@@ -116,11 +115,6 @@ const ACNH_ICON_MAP: Partial<Record<AppID, React.ReactNode>> = {
   [AppID.XhsStock]: draw([17, 25, 83, 79], camGlyph('#FC736D')),
   [AppID.Music]: draw([35, 22, 80, 76], musicGlyph),
   [AppID.Songwriting]: draw([35, 22, 80, 76], musicGlyph),
-  [AppID.Game]: draw([18, 40, 82, 70], <>
-    <rect x="18" y="40" width="64" height="30" rx="15" fill={CREAM} />
-    <rect x="30" y="52" width="14" height="5" rx="2.5" fill={BROWN} /><rect x="34.5" y="47.5" width="5" height="14" rx="2.5" fill={BROWN} />
-    <circle cx="64" cy="50" r="4" fill="#FC736D" /><circle cx="72" cy="58" r="4" fill="#82D5BB" />
-  </>),
   [AppID.Journal]: draw([21, 24, 79, 77], bookGlyph),
   [AppID.Novel]: draw([21, 24, 79, 77], bookGlyph),
   [AppID.Study]: draw([21, 24, 79, 77], bookGlyph),
@@ -134,7 +128,6 @@ const ACNH_ICON_MAP: Partial<Record<AppID, React.ReactNode>> = {
     <circle cx="38" cy="69" r="4" fill="#B7A98C" /><circle cx="52" cy="69" r="4" fill={BROWN} />
   </>),
   [AppID.SpecialMoments]: draw([12, 14, 88, 87], starGlyph),
-  [AppID.VRWorld]: draw([12, 14, 88, 87], starGlyph),
   [AppID.Appearance]: draw([16, 20, 84, 84], paletteGlyph),
   [AppID.ThemeMaker]: draw([16, 20, 84, 84], paletteGlyph),
   [AppID.HotNews]: draw([20, 26, 80, 76], <>

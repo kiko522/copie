@@ -60,15 +60,6 @@ const OtomeCompanionChrome: React.FC<OtomeCompanionChromeProps> = ({
         </button>
       </header>
 
-      <button type="button" className="otome-season-letter pointer-events-auto" onClick={() => openApp(AppID.VRWorld)}>
-        <span className="otome-letter-seal" aria-hidden><Icons.SpecialMoments /></span>
-        <span className="otome-letter-copy">
-          <small>SEASON LETTER</small>
-          <strong>晴庭来信</strong>
-          <em>一段新的回忆已寄达</em>
-        </span>
-      </button>
-
       <div className="otome-stage-toolbar pointer-events-auto" aria-label="桌面工具">
         <button type="button" onClick={() => openApp(AppID.Appearance)}><Icons.Appearance /><span>外观</span></button>
         <i aria-hidden />

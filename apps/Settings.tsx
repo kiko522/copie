@@ -37,6 +37,7 @@ import { isPushVapidReady } from '../utils/pushVapid';
 import ApiCallLogModal from '../components/settings/ApiCallLogModal';
 import StorageUsagePanel from '../components/settings/StorageUsagePanel';
 import McpConnectionConsole from '../components/settings/McpConnectionConsole';
+import CompanionBackendPanel from '../components/settings/CompanionBackendPanel';
 import { DB } from '../utils/db';
 import { getBackupReminderState, setBackupReminderIntervalDays, daysSinceLastBackup, BACKUP_REMINDER_MIN_DAYS, BACKUP_REMINDER_MAX_DAYS } from '../utils/backupReminder';
 import {
@@ -3238,6 +3239,13 @@ const Settings: React.FC = () => {
         </SettingsSection>
 
         {/* ───────── 推送凭据 (VAPID) ───────── */}
+        <SettingsSection
+            title="个人陪伴后端"
+            icon={<div className="p-2 bg-teal-100/60 rounded-xl text-teal-600"><PlugsConnected size={16} /></div>}
+        >
+            <CompanionBackendPanel addToast={addToast} />
+        </SettingsSection>
+
         {/* VAPID 公私钥：主动消息 2.0 部署 Worker 时用的就是这一对（一键部署自动沿用，手动部署照着填 env）。 */}
         {/* vapidReadyTick: VAPID 弹窗关闭后 +1, 让本节点 re-render 重读 isPushVapidReady(). */}
         <SettingsSection

@@ -1,0 +1,106 @@
+name: sully-companion
+
+services:
+  backend:
+    build:
+      context: ../../server/companion
+    restart: unless-stopped
+    init: true
+    env_file: .env
+    expose:
+      - "8787"
+    volumes:
+      - companion_data:/data
+    networks:
+      - internal
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8787/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  trendradar:
+    image: wantcat/trendradar:latest
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - ${TRENDRADAR_DIR:-/opt/TrendRadar}/config:/app/config:ro
+      - trendradar_output:/app/output
+    networks:
+      - internal
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  trendradar-mcp:
+    image: wantcat/trendradar-mcp:latest
+    restart: unless-stopped
+    depends_on:
+      - trendradar
+    environment:
+      TZ: Asia/Shanghai
+    expose:
+      - "3333"
+    volumes:
+      - ${TRENDRADAR_DIR:-/opt/TrendRadar}/config:/app/config:ro
+      - trendradar_output:/app/output:ro
+    networks:
+      - internal
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - internal
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  internal:
+
+volumes:
+  companion_data:
+  caddy_data:
+  caddy_config:
+  trendradar_output:

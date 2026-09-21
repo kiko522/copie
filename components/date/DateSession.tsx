@@ -25,8 +25,6 @@ import { getVoiceFavorite, makeVoiceFavoriteId, removeVoiceFavorite, saveVoiceFa
 import { MEETING_CONTINUE_DISPLAY_TEXT } from '../../utils/meetingContinue';
 import { VOICE_LANGUAGE_OPTIONS, voiceLanguageAnalyticsValue, voiceLanguageLabel, voiceLanguagePromptLabel } from '../../utils/voiceLanguage';
 import { trackEvent } from '../../utils/analytics';
-import { SARSpeechSwitch } from '../sar/SARSpeechSwitch';
-import { resolveSARDateSpeech } from '../../utils/sarDatePresentation';
 
 // 语音情绪标记 [v:xxx]：跟立绘情绪 [emotion] 分开的独立通道。立绘的 happy 是
 // 夸张的表情、语音的 happy 是音色情绪，两者强度/语义差异大，不能一概而论。
@@ -109,11 +107,6 @@ const parseDialogue = (fullText: string, initialEmotion: string = 'normal'): Dia
         }
     }
     return results;
-};
-
-const getSARSurface = (message: Message): string | undefined => {
-    const value = message.metadata?.sarModuleSurface?.surface;
-    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 };
 
 interface DateSessionProps {
@@ -233,18 +226,7 @@ const DateSession: React.FC<DateSessionProps> = ({
     const [showExitModal, setShowExitModal] = useState(false);
     // API 失败时本地记住本轮输入，不依赖父组件的 DB 刷新是否已经完成；用户可直接点重试。
     const [pendingRetryText, setPendingRetryText] = useState('');
-    const [sarTruthMessageIds, setSarTruthMessageIds] = useState<Set<number>>(new Set());
-    const [sarVisualTruth, setSarVisualTruth] = useState(false);
-
-    const currentSarPair = React.useMemo(() => {
-        const speech = messages.filter(message => message.role === 'assistant' && getSARSurface(message)).map(message => {
-            const parse = (text: string) => parseDialogue(extractObservation(text, { lenient: observeEnabled, custom: char.dateObserve?.custom }).rest);
-            return { id: message.id, moduleTitle: message.metadata?.sarModuleSurface?.moduleTitle || '临时模块',
-                surface: parse(getSARSurface(message)!), canonical: parse(message.content || '') };
-        });
-        return resolveSARDateSpeech(speech, dialogueBatch, dialogueQueue.length, currentText);
-    }, [messages, dialogueBatch, dialogueQueue.length, currentText, observeEnabled, char.dateObserve?.custom]);
-    const galShownText = currentSarPair ? (sarVisualTruth ? currentSarPair.canonical : currentSarPair.surface) : currentText;
+    const galShownText = currentText;
 
     useEffect(() => {
         if (!getPendingReplyText(messages)) setPendingRetryText('');
@@ -707,7 +689,7 @@ const DateSession: React.FC<DateSessionProps> = ({
     // 位置），isTyping 时也跳过（新回复交给 handleSend / handleRerollClick 处理，避免重复解析）。
     const lastAssistantContent = React.useMemo(() => {
         for (let i = messages.length - 1; i >= 0; i--) {
-            if (messages[i]?.role === 'assistant') return getSARSurface(messages[i]) || messages[i].content || '';
+            if (messages[i]?.role === 'assistant') return messages[i].content || '';
         }
         return '';
     }, [messages]);
@@ -1170,9 +1152,7 @@ const DateSession: React.FC<DateSessionProps> = ({
                                         </div>
                                     )}
                                     {msg.role === 'user' ? (() => {
-                                        const sarSurface = getSARSurface(msg);
-                                        const sarRevealed = sarTruthMessageIds.has(msg.id);
-                                        const shown = sarSurface && !sarRevealed ? sarSurface : msg.content;
+                                        const shown = msg.content;
                                         return (
                                         <div className="flex min-w-0 items-start justify-end gap-3">
                                             <p
@@ -1188,9 +1168,7 @@ const DateSession: React.FC<DateSessionProps> = ({
                                         </div>
                                         ); })() : (() => {
                                         // 观测协议：从这条回复里剥出观测块，正文上方渲染独立卡片，正文本身不显示块文本
-                                        const sarSurface = getSARSurface(msg);
-                                        const sarRevealed = sarTruthMessageIds.has(msg.id);
-                                        const shown = sarSurface && !sarRevealed ? sarSurface : msg.content;
+                                        const shown = msg.content;
                                         const { observation: msgObs, rest: msgBody } = extractObservation(shown || '', { lenient: observeEnabled, custom: char.dateObserve?.custom });
                                         return (
                                         <div className="flex min-w-0 items-start gap-3">
@@ -1267,16 +1245,6 @@ const DateSession: React.FC<DateSessionProps> = ({
                                             </div>
                                         </div>
                                         ); })()}
-                                    {getSARSurface(msg) && (
-                                        <div className="sar-date-speech-control" style={{ color: char.dateLightReading ? '#57534e' : '#cbd5e1' }}>
-                                            <SARSpeechSwitch truth={sarTruthMessageIds.has(msg.id)} moduleTitle={msg.metadata?.sarModuleSurface?.moduleTitle}
-                                                onToggle={() => setSarTruthMessageIds(previous => {
-                                                    const next = new Set(previous);
-                                                    if (next.has(msg.id)) next.delete(msg.id); else next.add(msg.id);
-                                                    return next;
-                                                })} />
-                                        </div>
-                                    )}
                                 </div>
                             ))}
                         </div>
@@ -1326,13 +1294,7 @@ const DateSession: React.FC<DateSessionProps> = ({
                                         </button>
                                     )}
                                 </div>
-                                {currentSarPair && (
-                                    <div className="sar-date-gal-speech-control">
-                                        <SARSpeechSwitch truth={sarVisualTruth} moduleTitle={currentSarPair.moduleTitle}
-                                            onToggle={() => setSarVisualTruth(value => !value)} />
-                                    </div>
-                                )}
-                                <p className="text-white/90 text-[16px] leading-relaxed font-light tracking-wide drop-shadow-md mt-2 whitespace-pre-wrap" data-sar-gal-text>
+                                <p className="text-white/90 text-[16px] leading-relaxed font-light tracking-wide drop-shadow-md mt-2 whitespace-pre-wrap">
                                     {galShownText === currentText ? displayedText : galShownText}
                                     {isTextAnimating && galShownText === currentText && <span className="inline-block w-2 h-4 bg-white/70 ml-1 animate-pulse align-middle"></span>}
                                 </p>

@@ -54,14 +54,6 @@ import { buildClaudeProxyCompatibilityBody, shouldRetryClaudeProxyCompatibility 
 import { routeMiniAppToolCall } from '../utils/miniAppToolRoute';
 import { applyEmotionEvalRaw, extractAssistantText } from '../utils/emotionApply';
 import { announceChatGen, CHAT_GEN_EVENTS } from '../utils/chatGenEvents';
-import {
-    advanceSARModuleAfterReply,
-    createSARModuleEventMeta,
-    createSARModuleSurfaceMeta,
-    getSARModuleRuntimePlan,
-    parseSARModuleReply,
-} from '../utils/vrWorld/sarModuleRuntime';
-import { parseSARUserSurfaces, selectSARUserSurfaceTargets } from '../utils/vrWorld/sarUserSurface';
 import { shouldRequestAmbient, buildAmbientEvalSection } from '../utils/roomAmbient';
 import { isEmotionEvalSkipped } from '../utils/devDebug';
 import {
@@ -624,10 +616,6 @@ export const useChatAI = ({
         const charForGen: CharacterProfile = skipEmotionInjection
             ? { ...char, buffInjection: '', activeBuffs: [] }
             : char;
-        // 一轮开始时冻结模块快照：API 飞行期间的 UI 更新不能改变这一轮要不要污染、
-        // 也不能让成功结算时多扣/少扣。重掷仍使用效果，但成功后不再次扣回合。
-        const sarModulePlan = getSARModuleRuntimePlan(charForGen, userProfile);
-
         // 工具会话累加本轮新任务；finally 打脏时也要读这一份最新配置。
         const amsg2Session = createAmsg2ToolSession({
             char, userProfile, groups, realtimeConfig, apiConfig, updateCharacter,
@@ -734,8 +722,7 @@ export const useChatAI = ({
             // 判据就一句话：这一轮上云会让角色掉能力，那就别上云。留在本地跑，工具照常用。
             // （地址够得着的服务器不受影响，照常上云，worker 自己跑后台 MCP。）
             const mcpWorkerUnreachable = hasWorkerUnreachableMcpServer(char.id);
-            const instantChatVeto: string | null = sarModulePlan.hasActiveEffect || sarModulePlan.hasAfterglow ? 'sar-module'
-                : luckinChatOn ? 'luckin-chat'
+            const instantChatVeto: string | null = luckinChatOn ? 'luckin-chat'
                 : mcdMiniOpen ? 'mcd'
                     : luckinMiniOpen ? 'luckin'
                         : mcpWorkerUnreachable ? 'mcp-worker-unreachable' : null;
@@ -746,7 +733,6 @@ export const useChatAI = ({
             const instantChatOn = instantChatReadiness.ready;
             const instantChatRoute = instantChatOn && !instantChatVeto;
             // 「即时对话开着、这一轮却没上云」的所有情形都在这一处留痕，都是留在本地跑：
-            //   · SAR 模块效果：效果与解除提示需要本地解析；
             //   · 点单流程否决：瑞幸/麦当劳是客户端交互式循环（选城市、确认单），云端接不了
             //     手，这一轮留在本地跑是对的；
             //   · MCP 地址 worker 够不着：同上，留在本地才有工具（见上面那段）。
@@ -756,9 +742,7 @@ export const useChatAI = ({
             if (instantChatOn && !instantChatRoute) {
                 const skipReason = instantChatVeto;
                 console.warn(
-                    skipReason === 'sar-module'
-                        ? '[AmsgInstantChat] SAR 模块效果与解除提示需要本地解析，这一轮在本地生成'
-                        : skipReason === 'mcp-worker-unreachable'
+                    skipReason === 'mcp-worker-unreachable'
                         ? '[AmsgInstantChat] 这一轮没上云（有 MCP 服务器填的是本机/内网地址，worker 够不着），本地生成，工具照常可用'
                         : `[AmsgInstantChat] 这一轮没上云（${skipReason} 点单流程需要客户端交互），本地生成`,
                 );
@@ -1159,7 +1143,7 @@ export const useChatAI = ({
             // 走不走这条路，构建 payload 之前的 instantChatRoute 已经算完了，这里只认它
             // 一个值：「这份 prompt 剥没剥时效段」和「这一轮走不走云端」必须是同一个判断，
             // 各算各的话两边总有一天会不同意，剥过的那份 prompt 就落到别的路上去了。
-            // 没上云的那些情形（SAR 模块 / 点单否决 / MCP 地址够不着）在那一段里已经报过 trace，
+            // 没上云的那些情形（点单否决 / MCP 地址够不着）在那一段里已经报过 trace，
             // 这边不重复报，也不重复拦。
             //
             // MCP 刻意不在排除名单里：worker fire 时自己解析 tool_config、自己跑后台
@@ -1241,8 +1225,7 @@ export const useChatAI = ({
             // 只允许标签外确实属于普通文字的部分预览。
             // 每次 onDelta 基于累计全文全量重算（safeFetchJson 重试会重开流，天然重置）；
             // 正文尾句和思考内容只在累计文本确实变化时触发重渲染。
-            // SAR 的正文包在结构化容器里，流式阶段不能把 TRUE/SURFACE 控制标签闪给用户。
-            const streamUiEligible = !!userStream && !toolModeActive && !bilingualActive && !sarModulePlan.requiresEnvelope;
+            const streamUiEligible = !!userStream && !toolModeActive && !bilingualActive;
             const streamPreviewEligible = streamUiEligible;
             const streamThinkingEligible = streamUiEligible && payload.flags.thinkingActive;
             // 预览真的上过屏才置 true → 后处理落库时跳过拟人打字延迟（instantRender），
@@ -1866,28 +1849,6 @@ export const useChatAI = ({
                 setMessages(msgs);
             };
             const rawAiContent = data.choices?.[0]?.message?.content || '';
-            const sarReply = parseSARModuleReply(rawAiContent, sarModulePlan);
-            const latestUserMessage = currentMsgs.slice().reverse().find(message => (
-                message.role === 'user' && message.type === 'text'
-            ));
-            const sarModuleEvents = createSARModuleEventMeta(sarModulePlan);
-            const userSurfaces = parseSARUserSurfaces(sarReply.userSurface,
-                selectSARUserSurfaceTargets(contextMsgs, char.id, sarModulePlan.user));
-            for (const [messageId, surface] of userSurfaces) {
-                const meta = createSARModuleSurfaceMeta(sarModulePlan.user!, surface);
-                if (meta) await DB.updateMessageMetadata(messageId, previous => ({
-                    ...(previous || {}), sarModuleSurface: meta,
-                }));
-            }
-            if (latestUserMessage?.id && sarModuleEvents.length > 0) {
-                await DB.updateMessageMetadata(latestUserMessage.id, previous => ({
-                    ...(previous || {}),
-                    ...(sarModuleEvents.length > 0 ? { sarModuleEvents } : {}),
-                }));
-            }
-            const assistantSurfaceMeta = sarModulePlan.character?.phase === 'active' && sarReply.assistantSurface
-                ? createSARModuleSurfaceMeta(sarModulePlan.character, sarReply.assistantSurface)
-                : undefined;
             const xhsCaches: XhsCaches = {
                 xsecTokenCache: xsecTokenCacheRef.current,
                 noteTitleCache: noteTitleCacheRef.current,
@@ -1895,7 +1856,7 @@ export const useChatAI = ({
                 commentAuthorNameCache: commentAuthorNameCacheRef.current,
                 commentParentIdCache: commentParentIdCacheRef.current,
             };
-            await applyAssistantPostProcessing(sarReply.canonical, {
+            await applyAssistantPostProcessing(rawAiContent, {
                 char,
                 userProfile,
                 emojis,
@@ -1930,25 +1891,10 @@ export const useChatAI = ({
                 // Phase 0: 本地 fetch 路径保持原逻辑, 不跳 2nd-pass LLM, 也没有结构化 directives。
                 skipSecondPassLLM: false,
                 directives: [],
-                sarModuleSurface: assistantSurfaceMeta,
             });
             // 最后一批正式消息已交给 setMessages；同一轮更新撤掉预览，不再逐条补弹。
             setStreamingBubbles([]);
             setStreamingThinking('');
-
-            // 到这里说明正文已成功落库。失败 / 中断不会经过；重掷是替换旧回合，不重复扣寿命。
-            if (!skipEmotionInjection) {
-                if (sarModulePlan.character) {
-                    updateCharacter(char.id, previous => ({
-                        vrState: { ...(previous.vrState || { enabled: false, intervalMinutes: 120 }), sarModule: advanceSARModuleAfterReply(previous.vrState?.sarModule, sarModulePlan.character) },
-                    }));
-                }
-                if (sarModulePlan.user) {
-                    updateUserProfile(previous => ({
-                        vrState: { ...(previous.vrState || { enabled: false }), sarModule: advanceSARModuleAfterReply(previous.vrState?.sarModule, sarModulePlan.user) },
-                    }));
-                }
-            }
 
             // 本地路径回复已全部落库。OSContext 监听这个事件 bump lastMsgTimestamp——
             // 当前挂载的 Chat（可能是切走又切回后新 mount 的实例，本闭包的 setMessages

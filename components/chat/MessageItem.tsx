@@ -3,10 +3,8 @@ import { avatarDecorationImageStyle, isAnniversaryFrame } from '../../utils/anni
 
 
 import React, { useEffect, useRef, useState } from 'react';
-const AivenFishSaleReceipt = React.lazy(() => import('../../apps/vrWorld/AivenFishSaleReceipt').then(module => ({ default: module.AivenFishSaleReceipt })));
 import { Message, ChatTheme } from '../../types';
 import { phoneFieldToText } from '../../utils/phoneEvidence';
-import { tryParseLifeSimResetCard } from '../../utils/lifeSimChatCard';
 import { VALID_INTERJECTION_TAGS, cleanVoiceMarkupForDisplay } from '../../utils/minimaxTts';
 import { stripFishCuesForDisplay } from '../../utils/fishAudioTts';
 import { formatStatCount } from '../../utils/videoParser';
@@ -16,7 +14,6 @@ import { isImageValue, useBlobRefUrl } from '../../utils/blobRef';
 import { buildReplySnapshotContent } from '../../utils/applyAssistantPostProcessing';
 import { stripLeakedSourceTags } from '../../utils/sanitize';
 import TokenImg from '../os/TokenImg';
-import { SARSpeechSwitch } from '../sar/SARSpeechSwitch';
 import McdCard from './McdCard';
 import HtmlCard from './HtmlCard';
 import LuckinCard from './LuckinCard';
@@ -1276,101 +1273,6 @@ const Like520ChatCard: React.FC<{ data: any }> = ({ data }) => {
     );
 };
 
-const LifeSimResetCardView: React.FC<{ card: any }> = ({ card }) => {
-    const parsed = tryParseLifeSimResetCard(card);
-    if (!parsed) return null;
-
-    return (
-        <div
-            className="w-72 overflow-hidden"
-            style={{
-                border: '2px solid #8f674a',
-                borderRadius: 2,
-                background: '#f4ede6',
-                boxShadow: '4px 4px 0 rgba(105, 74, 52, 0.28), inset 0 0 0 1px rgba(255,255,255,0.35)',
-            }}
-        >
-            <div
-                className="px-3 py-2 flex items-center gap-2"
-                style={{
-                    borderBottom: '2px solid rgba(96,65,44,0.22)',
-                    background: 'linear-gradient(180deg, #c99872, #9a6f52)',
-                }}
-            >
-                {parsed.charAvatar ? (
-                    <TokenImg value={parsed.charAvatar} className="w-8 h-8 object-cover shrink-0" style={{ borderRadius: 2, border: '2px solid rgba(255,255,255,0.25)' }} />
-                ) : (
-                    <div className="w-8 h-8 flex items-center justify-center text-white text-sm font-bold shrink-0" style={{ borderRadius: 2, background: 'linear-gradient(135deg, #b86c3d, #d39b62)' }}>
-                        {parsed.charName?.[0] || '?'}
-                    </div>
-                )}
-                <div className="flex-1 min-w-0">
-                    <div className="text-[8px] font-bold tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.78)', fontFamily: 'monospace' }}>
-                        city-summary.exe
-                    </div>
-                    <div className="text-[11px] font-bold truncate" style={{ color: 'white' }}>
-                        {parsed.headline || parsed.title}
-                    </div>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                    <span style={{ width: 10, height: 10, borderRadius: 2, background: '#fbbf24', border: '1px solid rgba(0,0,0,0.12)' }} />
-                    <span style={{ width: 10, height: 10, borderRadius: 2, background: '#86efac', border: '1px solid rgba(0,0,0,0.12)' }} />
-                </div>
-            </div>
-
-            <div
-                className="px-3 py-3"
-                style={{
-                    backgroundImage: 'linear-gradient(rgba(143,103,74,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(143,103,74,0.06) 1px, transparent 1px)',
-                    backgroundSize: '8px 8px',
-                }}
-            >
-                <div className="flex items-center justify-between text-[9px] font-bold mb-2" style={{ color: '#8f7968', fontFamily: 'monospace' }}>
-                    <span>{parsed.charName}</span>
-                    <span>主线 {parsed.mainPlotCount}</span>
-                </div>
-                <div
-                    className="px-3 py-2.5"
-                    style={{
-                        borderRadius: 2,
-                        background: 'rgba(255,255,255,0.82)',
-                        border: '2px solid rgba(168,123,91,0.3)',
-                        boxShadow: 'inset 1px 1px 0 rgba(255,255,255,0.6)',
-                    }}
-                >
-                    <div className="text-[11px] leading-relaxed whitespace-pre-wrap" style={{ color: '#5b4c42' }}>
-                        {parsed.summary}
-                    </div>
-                </div>
-
-                <div className="mt-3 retro-inset px-2.5 py-2" style={{ borderRadius: 2 }}>
-                    <div className="flex items-center justify-between text-[9px] font-bold" style={{ color: '#8f7968', fontFamily: 'monospace' }}>
-                        <span>参与者 {parsed.participantNames.length}</span>
-                        <span>回合 {parsed.turnCount}</span>
-                    </div>
-                    <div className="mt-1 text-[9px] leading-relaxed" style={{ color: '#9b8677' }}>
-                        {parsed.participantNames.join('、') || '无参与角色'}
-                    </div>
-                </div>
-            </div>
-
-            <div
-                className="px-3 py-1.5 flex items-center justify-between"
-                style={{
-                    borderTop: '2px solid rgba(143,103,74,0.18)',
-                    background: 'linear-gradient(180deg, #eadfce, #dfd0bd)',
-                    fontFamily: 'monospace',
-                    fontSize: 9,
-                    color: '#836b5b',
-                }}
-            >
-                <span>memory://lifesim/session-card</span>
-                <span>OK</span>
-            </div>
-        </div>
-    );
-};
-
 interface MessageItemProps {
     msg: Message;
     isFirstInGroup: boolean;
@@ -1498,7 +1400,6 @@ const MessageItem = React.memo(({
     // 无条件解析一次（hook 不能进条件分支）。挂件/头像挂件走 TokenImg，各自组件内解析。
     const bubbleBgUrl = useBlobRefUrl(styleConfig.backgroundImage);
     const [showVoiceText, setShowVoiceText] = useState(false);
-    const [showSarTruth, setShowSarTruth] = useState(false);
     const [openingCollaborationFile, setOpeningCollaborationFile] = useState(false);
     const [replyOffset, setReplyOffset] = useState(0);
     const [isReplyGestureActive, setIsReplyGestureActive] = useState(false);
@@ -1656,24 +1557,6 @@ const MessageItem = React.memo(({
         if (m.type === 'score_card') {
             let scoreData: any = null;
             try { scoreData = m.metadata?.scoreCard || JSON.parse(m.content); } catch {}
-            if (scoreData?.type === 'lifesim_reset_card') {
-                return (
-                    <div className={`flex items-center w-full ${selectionMode ? 'pl-8' : ''} animate-fade-in relative transition-[padding] duration-300`}>
-                        {selectionMode && (
-                            <div className="absolute left-2 top-1/2 -translate-y-1/2 cursor-pointer z-20" onClick={() => onToggleSelect(m.id)}>
-                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${isSelected ? 'bg-primary border-primary' : 'border-slate-300 bg-white/80'}`}>
-                                    {isSelected && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>}
-                                </div>
-                            </div>
-                        )}
-                        <div className="w-full px-4 my-3" {...interactionProps}>
-                            <div className="mx-auto w-72">
-                                <LifeSimResetCardView card={scoreData} />
-                            </div>
-                        </div>
-                    </div>
-                );
-            }
             if (scoreData?.type === 'diary_card') {
                 const dateParts = (scoreData.date || '').split('-');
                 const monthDay = dateParts.length === 3 ? `${dateParts[1]}/${dateParts[2]}` : (scoreData.date || '');
@@ -2437,153 +2320,6 @@ const MessageItem = React.memo(({
         );
     }
 
-    if (m.type === 'vr_card') {
-        const md: any = m.metadata || {};
-        const roomNameMap: Record<string, string> = {
-            library: '图书馆', music: '听歌房', guestbook: '留言簿', gym: '娱乐室', postoffice: '邮局', theater: '剧院', signal: '信号坠落处', sar: 'SAR 活动空间',
-        };
-        const roomInfo = { name: roomNameMap[md.room] || '彼方' };
-        const activity: string = md.activity || '在彼方度过了一段时间。';
-        const excerpts: string[] = Array.isArray(md.annotationExcerpts) ? md.annotationExcerpts : [];
-        const timeStr = new Date(m.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-        const sarNote: any = md.sarCabinetNote;
-        if (sarNote?.id) {
-            const card = (
-                <div className="w-72 max-w-[82vw]">
-                    <div className="relative overflow-hidden border border-stone-400/65 shadow-[4px_6px_0_rgba(86,78,66,.18)]" style={{ background: '#f4eddf', color: '#3f4744' }}>
-                        <div className="absolute inset-y-0 left-0 w-1.5 bg-gradient-to-b from-teal-700/80 via-slate-500/60 to-rose-700/70" />
-                        <div className="px-4 pl-5 pt-3 pb-2.5 flex items-start gap-2 border-b border-stone-400/45">
-                            <span className="mt-0.5 text-[15px] text-teal-700">✦</span>
-                            <div className="min-w-0 flex-1">
-                                <div className="text-[8px] tracking-[0.22em] font-bold text-teal-800/65">彼方 · 角色柜中随笔</div>
-                                <div className="mt-1 text-[15px] leading-snug font-bold text-stone-800" style={{ fontFamily: "'Noto Serif SC',serif" }}>{sarNote.title || '一次芯片事故'}</div>
-                                <div className="mt-1 text-[9px] text-stone-500">{sarNote.actorName || charName || 'Ta'} 给 {sarNote.targetName || '另一位玩家'} 用了两枚芯片</div>
-                            </div>
-                            <span className="text-[8px] text-stone-400">{timeStr}</span>
-                        </div>
-                        <div className="px-4 pl-5 py-3">
-                            <div className="flex items-center gap-1.5 text-[9px] text-teal-800/75">
-                                <span className="px-1.5 py-1 border border-teal-800/20 bg-white/30">{sarNote.variantTitle}</span><i className="not-italic text-stone-400">×</i><span className="px-1.5 py-1 border border-teal-800/20 bg-white/30">{sarNote.storyTitle}</span>
-                            </div>
-                            <blockquote className="my-2.5 px-2.5 py-2 border-l-2 border-rose-700/45 bg-[#e8ddce] text-[11px] leading-relaxed text-stone-700" style={{ fontFamily: "'Noto Serif SC',serif" }}>“{sarNote.highlight}”</blockquote>
-                            <p className="text-[11px] leading-[1.65] text-stone-600">{activity}</p>
-                            <details className="group mt-2 border-t border-dashed border-stone-400/50 pt-2 [&_summary]:list-none [&::-webkit-details-marker]:hidden">
-                                <summary className="cursor-pointer select-none text-[9px] font-bold text-teal-800/70">展开完整事故与 TA 的随笔 <span className="inline-block transition-transform group-open:rotate-90">›</span></summary>
-                                <div className="mt-2 space-y-2.5">
-                                    <div><div className="text-[8px] tracking-[0.14em] text-stone-400">事情经过</div><p className="mt-1 whitespace-pre-wrap text-[11px] leading-[1.75] text-stone-600">{sarNote.story}</p></div>
-                                    <div className="border-t border-stone-300/70 pt-2"><div className="text-[8px] tracking-[0.14em] text-rose-800/55">柜中随笔</div><p className="mt-1 whitespace-pre-wrap text-[11px] leading-[1.75] text-stone-700" style={{ fontFamily: "'Noto Serif SC',serif" }}>{sarNote.notes}</p></div>
-                                </div>
-                            </details>
-                        </div>
-                        <div className="px-4 pl-5 py-1.5 border-t border-stone-400/40 flex items-center justify-between text-[8px] text-stone-500">
-                            <span>TA 自己玩过的一局</span><span className="font-bold text-rose-800/60">已收入角色柜子</span>
-                        </div>
-                    </div>
-                </div>
-            );
-            return commonLayout(card);
-        }
-        const card = (
-            <div className="w-64">
-                <div
-                    className="rounded-xl overflow-hidden border border-indigo-300/40 shadow-[0_4px_16px_rgba(60,40,120,0.22)]"
-                    style={{ background: 'linear-gradient(155deg,#2a2350 0%,#1b1838 100%)' }}
-                >
-                    {/* 头部：彼方 · 房间 */}
-                    <div className="px-3 pt-2.5 pb-2 flex items-center gap-2 border-b border-white/10">
-                        <span className="text-base leading-none text-indigo-200/80" style={{ filter: 'drop-shadow(0 0 5px rgba(170,180,255,.6))' }}>✦</span>
-                        <div className="flex-1 min-w-0">
-                            <div className="text-[9px] tracking-[0.25em] text-indigo-300/80 font-bold uppercase">彼方 · 动态</div>
-                            <div className="text-[12px] text-indigo-100 font-semibold truncate">{roomInfo.name}{md.novelTitle ? ` · 《${md.novelTitle}》` : ''}</div>
-                        </div>
-                        <span className="text-[9px] text-indigo-300/60">{timeStr}</span>
-                    </div>
-                    {/* 活动播报 */}
-                    <div className="px-3 py-2.5">
-                        <p className="text-[12.5px] leading-[1.5] text-indigo-50/95">
-                            {md.userBoardPost
-                                ? activity
-                                : <><span className="font-bold text-amber-200">{charName || 'Ta'}</span> {activity}</>}
-                        </p>
-                        {excerpts.length > 0 && (
-                            <div className="mt-2 space-y-1">
-                                {excerpts.map((ex, i) => (
-                                    <div key={i} className="text-[11px] leading-snug text-indigo-200/80 pl-2 border-l-2 border-amber-300/50">
-                                        {ex}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                        {/* 留言簿：把角色在墙上留的原话也显示出来 */}
-                        {md.privateWords && <blockquote className="mt-2 border-l-2 border-teal-200/50 pl-2 text-[12px] leading-relaxed text-indigo-50 whitespace-pre-wrap">{md.privateWords}</blockquote>}
-                        {md.fishing?.sale && <React.Suspense fallback={null}><AivenFishSaleReceipt sale={md.fishing.sale} sellerName={charName || 'Ta'} sellerWords={md.fishing.sale.sellerWords}/></React.Suspense>}
-                        {(md.marketActivity || md.marketEventId) && <details className="mt-2 text-[11px] text-indigo-200/80">
-                            <summary className="cursor-pointer">展开经过与原话</summary>
-                            <p className="mt-2 whitespace-pre-wrap break-words leading-relaxed">{m.content}</p>
-                        </details>}
-                        {Array.isArray(md.boardPosts) && md.boardPosts.length > 0 && (
-                            <div className="mt-2 space-y-1">
-                                {md.boardPosts.map((p: any, i: number) => (
-                                    <div key={i} className="text-[11px] leading-snug text-indigo-100/90 pl-2 border-l-2 border-indigo-300/50">
-                                        {p?.replyToName && <span className="text-indigo-300/70">回 {p.replyToName}：</span>}{p?.content}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                    {/* 页脚 */}
-                    <div className="px-3 py-1.5 border-t border-white/10 flex items-center justify-between">
-                        <span className="text-[9px] text-indigo-300/60 italic">{md.userBoardPost ? '你发布到留言墙' : 'Ta 独自度过的时间'}</span>
-                        <span className="text-[9px] text-amber-200/70 font-bold tracking-wide">{md.userBoardPost ? '彼方' : '＋记忆'}</span>
-                    </div>
-                </div>
-            </div>
-        );
-        return commonLayout(card);
-    }
-
-    if (m.type === 'sim_card') {
-        const sc: any = m.metadata?.simCard || {};
-        const timeStr = new Date(m.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-        const accent = '#b89bff';
-        const card = (
-            <div className="w-64">
-                <div className="relative rounded-2xl overflow-hidden border shadow-[0_8px_28px_rgba(40,30,70,0.45)]"
-                    style={{ borderColor: 'rgba(184,155,255,0.3)', background: 'linear-gradient(160deg,#221c33 0%,#171327 55%,#100d1c 100%)' }}>
-                    <div className="absolute -top-7 -right-5 w-24 h-24 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle,rgba(184,155,255,.4),transparent 70%)' }} />
-                    <div className="absolute inset-0 pointer-events-none opacity-50" style={{ backgroundImage: 'radial-gradient(1px 1px at 22% 24%,#c9b8ec,transparent),radial-gradient(1px 1px at 62% 18%,#e7c9f0,transparent),radial-gradient(1px 1px at 42% 36%,#bcd0f0,transparent)' }} />
-                    {/* 头部 */}
-                    <div className="relative px-3 pt-2.5 pb-2 flex items-center gap-2 border-b" style={{ borderColor: 'rgba(184,155,255,0.18)' }}>
-                        <span className="text-base leading-none" style={{ color: accent, filter: 'drop-shadow(0 1px 4px rgba(184,155,255,.5))' }}>✦</span>
-                        <div className="flex-1 min-w-0">
-                            <div className="text-[9px] tracking-[0.25em] font-bold uppercase" style={{ color: accent }}>体验卡 · {sc.mode === 'event' ? '事件' : '日常'}</div>
-                            <div className="text-[12px] text-white/90 font-semibold truncate" style={{ fontFamily: "'Shippori Mincho','Noto Sans SC',serif" }}>{sc.title || '一段回忆'}</div>
-                        </div>
-                        <span className="text-[9px] text-white/35">{timeStr}</span>
-                    </div>
-                    {/* 正文 */}
-                    <div className="relative px-3 py-2.5">
-                        {sc.theme && (
-                            <span className="inline-block text-[9px] px-2 py-0.5 rounded-full mb-2" style={{ color: accent, background: 'rgba(184,155,255,0.14)' }}>{sc.theme}</span>
-                        )}
-                        {sc.summary && (
-                            <p className="text-[12px] leading-[1.7] text-white/70 whitespace-pre-wrap max-h-44 overflow-y-auto no-scrollbar" style={{ fontFamily: "'Shippori Mincho','Noto Sans SC',serif" }}>
-                                {sc.summary}
-                            </p>
-                        )}
-                        {sc.ending && <div className="mt-2 text-[10px] text-white/40">结局 · {sc.ending}</div>}
-                    </div>
-                    {/* 页脚 */}
-                    <div className="relative px-3 py-1.5 border-t flex items-center justify-between" style={{ borderColor: 'rgba(184,155,255,0.18)' }}>
-                        <span className="text-[9px] italic text-white/35">你真实经历过的一天</span>
-                        <span className="text-[9px] font-bold tracking-wide" style={{ color: accent }}>＋ 收藏为回忆</span>
-                    </div>
-                </div>
-            </div>
-        );
-        return commonLayout(card);
-    }
-
     if (m.type === 'group_topic_card') {
         const box: any = m.metadata?.groupTopicBox || {};
         const card = (
@@ -2891,53 +2627,6 @@ const MessageItem = React.memo(({
         return commonLayout(card);
     }
 
-    if (m.type === 'trpg_card') {
-        const t: any = m.metadata?.trpg || {};
-        const gameTitle: string = t.gameTitle || 'TRPG 跑团';
-        const partyNames: string[] = Array.isArray(t.partyNames) ? t.partyNames.filter((n: string) => n && n !== charName) : [];
-        const excerpt: Array<{ speaker?: string; text?: string; role?: string }> = Array.isArray(t.excerpt) ? t.excerpt : [];
-        const card = (
-            <div className="w-72">
-                <div
-                    className="rounded-2xl overflow-hidden border border-purple-300/30 shadow-[0_6px_20px_rgba(70,40,110,0.28)]"
-                    style={{ background: 'linear-gradient(155deg,#2c1c44 0%,#1a1230 100%)' }}
-                >
-                    {/* 头部 */}
-                    <div className="px-3.5 pt-3 pb-2.5 flex items-center gap-2.5 border-b border-white/10">
-                        <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg,#a855f7,#ec4899)' }}>
-                            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-white"><path d="M12 2 4 6v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V6l-8-4Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <div className="text-[9px] tracking-[0.25em] text-purple-300/80 font-bold uppercase">TRPG · 一起玩的游戏</div>
-                            <div className="text-[13px] text-purple-50 font-semibold truncate font-serif">{gameTitle}</div>
-                        </div>
-                    </div>
-                    {/* 剧情节选 */}
-                    <div className="px-3.5 py-3 space-y-2 max-h-60 overflow-hidden">
-                        {excerpt.length === 0 && <p className="text-[12px] text-purple-200/70 italic">一段冒险剧情</p>}
-                        {excerpt.slice(0, 6).map((e, i) => {
-                            const isGM = e.role === 'gm';
-                            const text = (e.text || '').replace(/^\*|\*$/g, '').trim();
-                            return (
-                                <div key={i} className={`text-[12px] leading-relaxed ${isGM ? 'text-purple-100/90 italic' : 'text-purple-50/95'}`}>
-                                    {!isGM && e.speaker && <span className="text-pink-300/90 font-semibold mr-1">{e.speaker}:</span>}
-                                    <span className={isGM ? 'border-l-2 border-purple-400/40 pl-2 block' : ''}>{text}</span>
-                                </div>
-                            );
-                        })}
-                        {excerpt.length > 6 && <div className="text-[10px] text-purple-300/60 text-center pt-0.5">…共 {excerpt.length} 条剧情</div>}
-                    </div>
-                    {/* 页脚 */}
-                    <div className="px-3.5 py-2 border-t border-white/10 flex items-center justify-between">
-                        <span className="text-[9px] text-purple-300/70 italic truncate">{partyNames.length ? `与 ${partyNames.join('、')} 同行` : '我们的冒险'}</span>
-                        <span className="text-[9px] text-pink-200/80 font-bold tracking-wide shrink-0 ml-2">＋共同回忆</span>
-                    </div>
-                </div>
-            </div>
-        );
-        return commonLayout(card);
-    }
-
     if (m.type === 'novel_card') {
         const n: any = m.metadata?.novel || {};
         const bookTitle: string = n.bookTitle || '无题';
@@ -3095,10 +2784,6 @@ const MessageItem = React.memo(({
     if (m.type === 'score_card') {
         let scoreData: any = null;
         try { scoreData = m.metadata?.scoreCard || JSON.parse(m.content); } catch {}
-
-        if (scoreData?.type === 'lifesim_reset_card') {
-            return commonLayout(<LifeSimResetCardView card={scoreData} />);
-        }
 
         if (scoreData?.type === 'qixi_event_card') {
             return commonLayout(<QixiEventCardView card={scoreData} timestamp={m.timestamp} interactionProps={interactionProps} />);
@@ -3551,11 +3236,7 @@ const MessageItem = React.memo(({
         .replace(/\n{3,}/g, '\n\n')                  // collapse excess newlines
         .trim());   // ⚠️ 末尾再洗一遍鱼声情绪 cue（[excited]/[pause]/(laughs) 等），避免漏到气泡/翻译里
 
-    const sarSurfaceText = typeof m.metadata?.sarModuleSurface?.surface === 'string'
-        ? m.metadata.sarModuleSurface.surface.trim()
-        : '';
-    const hasSarSurface = !!sarSurfaceText;
-    const rawContent = hasSarSurface && !showSarTruth ? sarSurfaceText : m.content;
+    const rawContent = m.content;
 
     // 语音文字（转文字面板 / 语音条预览）显示前：先洗 MiniMax 标记，再洗鱼声情绪 cue，
     // 两家服务商的演出标记都不会漏给用户看。
@@ -3586,9 +3267,7 @@ const MessageItem = React.memo(({
     // Check if raw content has a <语音> tag (voice-only message that hasn't been TTS'd yet).
     // 未闭合的开标签也算 (历史坏数据: 语音块曾被 chunkText 切碎, 开标签落单) —
     // 当语音条渲染 + 转文字兜底, 而不是把原始标签漏给用户看。
-    const voiceMarkupContent = hasSarSurface && !showSarTruth && /<[语語]音[^>]*>/.test(sarSurfaceText)
-        ? sarSurfaceText
-        : m.content;
+    const voiceMarkupContent = m.content;
     const hasVoiceTag = !isUser && /<[语語]音[^>]*>/.test(voiceMarkupContent);
     // Spoken text inside the <语音> tag — lets the placeholder bar offer a 转文字 toggle
     // even when no audio was synthesized (e.g. character has no MiniMax voice configured),
@@ -3602,12 +3281,8 @@ const MessageItem = React.memo(({
     const voiceSubtitleText = cleanVoiceText(
         voiceMarkupContent.match(/<字幕>([\s\S]*?)<\/字幕>/)?.[1] || '',
     );
-    const generatedVoiceText = showSarTruth && hasSarSurface && voiceTagText
-        ? voiceTagText
-        : cleanVoiceText(voiceData?.spokenText);
-    const generatedVoiceSubtitle = showSarTruth && hasSarSurface
-        ? voiceSubtitleText
-        : cleanVoiceText(voiceData?.originalText);
+    const generatedVoiceText = cleanVoiceText(voiceData?.spokenText) || voiceTagText;
+    const generatedVoiceSubtitle = cleanVoiceText(voiceData?.originalText) || voiceSubtitleText;
     const hasVoiceContent = voiceData?.url || voiceLoading || hasVoiceTag;
     // Don't render empty bubbles (e.g. messages that were just "---"), unless voice data exists or pending
     if (!displayContent && !hasVoiceContent) return null;
@@ -3675,12 +3350,6 @@ const MessageItem = React.memo(({
             </div>
             )}
 
-            {hasSarSurface && (displayContent || hasVoiceContent) && (
-                <div className="sar-chat-speech-control" style={{ color: styleConfig.textColor }}>
-                    <SARSpeechSwitch truth={showSarTruth} moduleTitle={m.metadata?.sarModuleSurface?.moduleTitle}
-                        onToggle={() => setShowSarTruth(value => !value)} />
-                </div>
-            )}
 
             {/* Layer 5: 双语「翻译/原文」切换 —— 气泡内右下角，细分隔线压层级，小灰字克制易找 */}
             {showTranslateButton && displayContent && !isForeignVoiceMsg && (
@@ -3899,9 +3568,7 @@ const MessageItem = React.memo(({
            // 否则用户点了「确认」，DB 已更新、消息已重载，卡片却因 memo 判等而纹丝不动。
            prev.msg.metadata?.reviewStatus === next.msg.metadata?.reviewStatus &&
            prev.msg.metadata?.status === next.msg.metadata?.status &&
-           prev.msg.metadata?.receipt === next.msg.metadata?.receipt &&
-           prev.msg.metadata?.sarModuleSurface?.surface === next.msg.metadata?.sarModuleSurface?.surface &&
-           prev.isFirstInGroup === next.isFirstInGroup &&
+           prev.msg.metadata?.receipt === next.msg.metadata?.receipt &&           prev.isFirstInGroup === next.isFirstInGroup &&
            prev.isLastInGroup === next.isLastInGroup &&
            prev.activeTheme === next.activeTheme &&
            prev.charAvatar === next.charAvatar &&

@@ -26,13 +26,6 @@ import { materializeVisionDescriptions } from '../utils/visionApi';
 import { shareOrDownloadFile } from '../utils/shareExport';
 import { buildInPersonContinueInstruction } from '../utils/meetingContinue';
 import {
-    advanceSARModuleAfterReply,
-    createSARModuleEventMeta,
-    createSARModuleSurfaceMeta,
-    getSARModuleRuntimePlan,
-    parseSARModuleReply,
-} from '../utils/vrWorld/sarModuleRuntime';
-import {
     buildDateHistoryGroups,
     formatDateHistoryDate,
     formatDateHistoryExport,
@@ -412,7 +405,6 @@ const DateApp: React.FC = () => {
     // --- Session API Logic ---
     const handleSendMessage = async (text: string, kind?: 'continue'): Promise<string> => {
         if (!char) throw new Error("No char");
-        const sarModulePlan = getSARModuleRuntimePlan(char, userProfile);
 
         // 重发场景：如果 DB 里最后一条已经是这条 user 消息（上一轮发送后 API 失败 / 网络抖动等），
         // 就跳过重复落库，直接走 API。与 chat app 行为对齐，让用户按发送键即可重新触发 LLM。
@@ -461,34 +453,8 @@ const DateApp: React.FC = () => {
             useVisionDescriptions: apiConfig.visionApi?.enabled === true,
         });
         const rawContent = await callLLM(messages, apiConfig.temperature ?? 0.85);
-        const parsed = parseSARModuleReply(rawContent, sarModulePlan);
-        const sarModuleEvents = createSARModuleEventMeta(sarModulePlan);
-        const userSurface = sarModulePlan.user?.phase === 'active' && parsed.userSurface
-            ? createSARModuleSurfaceMeta(sarModulePlan.user, parsed.userSurface)
-            : undefined;
-        if (userMessageId && (sarModuleEvents.length > 0 || userSurface)) {
-            await DB.updateMessageMetadata(userMessageId, previous => ({
-                ...(previous || {}),
-                ...(userSurface ? { sarModuleSurface: userSurface } : {}),
-                ...(sarModuleEvents.length > 0 ? { sarModuleEvents } : {}),
-            }));
-        }
-        const assistantSurface = sarModulePlan.character?.phase === 'active' && parsed.assistantSurface
-            ? createSARModuleSurfaceMeta(sarModulePlan.character, parsed.assistantSurface)
-            : undefined;
-
         // 3. Save AI Response
-        await DB.saveMessage({ charId: char.id, role: 'assistant', type: 'text', content: parsed.canonical, metadata: { source: 'date', ...(assistantSurface ? { sarModuleSurface: assistantSurface } : {}) } });
-        if (sarModulePlan.character) {
-            updateCharacter(char.id, previous => ({
-                vrState: { ...(previous.vrState || { enabled: false, intervalMinutes: 120 }), sarModule: advanceSARModuleAfterReply(previous.vrState?.sarModule, sarModulePlan.character) },
-            }));
-        }
-        if (sarModulePlan.user) {
-            updateUserProfile(previous => ({
-                vrState: { ...(previous.vrState || { enabled: false }), sarModule: advanceSARModuleAfterReply(previous.vrState?.sarModule, sarModulePlan.user) },
-            }));
-        }
+        await DB.saveMessage({ charId: char.id, role: 'assistant', type: 'text', content: rawContent, metadata: { source: 'date' } });
         markDateTurnDirty(char);
 
         // Refresh local state
@@ -497,7 +463,7 @@ const DateApp: React.FC = () => {
         // Memory Palace 后台流程（不阻塞返回，与聊天侧一致）
         runMemoryPalacePostHook(char);
 
-        return parsed.assistantSurface || parsed.canonical;
+        return rawContent;
     };
 
     const handleReroll = async (): Promise<string> => {
@@ -558,26 +524,9 @@ const DateApp: React.FC = () => {
         });
         // Reroll 略调高温度求多样性，但绝不低于用户配置的基线。
         const rawContent = await callLLM(messages, Math.max(apiConfig.temperature ?? 0.85, 0.9));
-        const sarPlan = getSARModuleRuntimePlan(char, userProfile);
-        const parsed = parseSARModuleReply(rawContent, sarPlan);
-        const sarModuleEvents = createSARModuleEventMeta(sarPlan);
-        const userSurface = sarPlan.user?.phase === 'active' && parsed.userSurface
-            ? createSARModuleSurfaceMeta(sarPlan.user, parsed.userSurface)
-            : undefined;
-        if (sarModuleEvents.length > 0 || userSurface) {
-            await DB.updateMessageMetadata(lastUserMsg.id, previous => ({
-                ...(previous || {}),
-                ...(userSurface ? { sarModuleSurface: userSurface } : {}),
-                ...(sarModuleEvents.length > 0 ? { sarModuleEvents } : {}),
-            }));
-        }
-        const assistantSurface = sarPlan.character?.phase === 'active' && parsed.assistantSurface
-            ? createSARModuleSurfaceMeta(sarPlan.character, parsed.assistantSurface)
-            : undefined;
-
         // 生成成功后才删旧回复：以前先删后调 API，请求一失败上一条剧情就永久消失
         await DB.deleteMessage(lastMsg.id);
-        await DB.saveMessage({ charId: char.id, role: 'assistant', type: 'text', content: parsed.canonical, metadata: { source: 'date', ...(assistantSurface ? { sarModuleSurface: assistantSurface } : {}) } });
+        await DB.saveMessage({ charId: char.id, role: 'assistant', type: 'text', content: rawContent, metadata: { source: 'date' } });
         markDateTurnDirty(char);
         trackEvent('重掷见面回复', { 目标: '回复' });
 
@@ -587,7 +536,7 @@ const DateApp: React.FC = () => {
         // Memory Palace 后台流程（Reroll 也算一轮新输出）
         runMemoryPalacePostHook(char);
 
-        return parsed.assistantSurface || parsed.canonical;
+        return rawContent;
     };
 
     // --- Editing & Deletion ---

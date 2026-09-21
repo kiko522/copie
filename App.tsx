@@ -6,7 +6,6 @@ import PhoneShell from './components/PhoneShell';
 import BuildBadge from './components/BuildBadge';
 import DevDebugPanel from './components/DevDebugPanel';
 import Amsg2DebugPanel from './components/Amsg2DebugPanel';
-import VRBroadcast from './components/VRBroadcast';
 import WorldBroadcast from './components/WorldBroadcast';
 import ChatBroadcast from './components/ChatBroadcast';
 import { isIOSStandaloneWebApp } from './utils/iosStandalone';
@@ -48,7 +47,6 @@ const App: React.FC = () => {
       </div>
       <BuildBadge />
       <DevDebugPanel />
-      <VRBroadcast />
       <WorldBroadcast />
       <ChatBroadcast />
     </>

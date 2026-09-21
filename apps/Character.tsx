@@ -8,7 +8,7 @@ import Modal from '../components/os/Modal';
 import { processImage } from '../utils/file';
 import { DB } from '../utils/db';
 import { ContextBuilder } from '../utils/context';
-import { buildSARMemoryBoundaryInstruction, formatMessageWithTime, formatMessageForPrompt } from '../utils/messageFormat';
+import { formatMessageWithTime, formatMessageForPrompt } from '../utils/messageFormat';
 import { DEFAULT_ARCHIVE_PROMPTS } from '../components/chat/ChatConstants';
 import ImpressionPanel from '../components/character/ImpressionPanel';
 import RoomPlatePanel from '../components/character/RoomPlatePanel';
@@ -534,11 +534,9 @@ const Character: React.FC = () => {
       const taskPreamble = `### 任务（最优先，请先读此段再读后文）
 你正在执行"月度记忆精炼"：把 user 消息里提供的【${year}-${month} 每日记忆碎片】压缩成一份简洁的月度核心记忆。
 这是**总结写作任务**，不是角色扮演对话——不要进入聊天模式、不要等待对方发言、不要只输出空白或沉默，直接输出总结正文。`;
-      const sarMemoryBoundary = buildSARMemoryBoundaryInstruction(rawText);
-
       const systemContent = formattedPrompt
-          ? `${taskPreamble}${sarMemoryBoundary ? `\n\n${sarMemoryBoundary}` : ''}\n\n### 角色视角（仅供写作口吻参考）\n${identityContext}### 详细规则与输出格式\n${formattedPrompt}`
-          : `${taskPreamble}${sarMemoryBoundary ? `\n\n${sarMemoryBoundary}` : ''}\n\n### 角色视角（仅供写作口吻参考）\n${identityContext}### 详细规则\n以该角色的第一人称写作，使用与日记相同的语言（中文），输出一段精简的月度核心记忆。`;
+          ? `${taskPreamble}\n\n### 角色视角（仅供写作口吻参考）\n${identityContext}### 详细规则与输出格式\n${formattedPrompt}`
+          : `${taskPreamble}\n\n### 角色视角（仅供写作口吻参考）\n${identityContext}### 详细规则\n以该角色的第一人称写作，使用与日记相同的语言（中文），输出一段精简的月度核心记忆。`;
       const userContent = rawText;
 
       const refineUrl = `${apiConfig.baseUrl.replace(/\/+$/, '')}/chat/completions`;
@@ -639,8 +637,6 @@ const Character: React.FC = () => {
           const templateObj = archivePrompts.find(p => p.id === effectivePromptId) || DEFAULT_ARCHIVE_PROMPTS[0];
           const baseContext = ContextBuilder.buildCoreContext(formData, userProfile);
           let prompt = baseContext + '\n\n' + templateObj.content;
-          const sarMemoryBoundary = buildSARMemoryBoundaryInstruction(rawLog);
-          if (sarMemoryBoundary) prompt = `${sarMemoryBoundary}\n\n${prompt}`;
           prompt = prompt.replace(/\$\{dateStr\}/g, dateStr);
           prompt = prompt.replace(/\$\{char\.name\}/g, formData.name);
           prompt = prompt.replace(/\$\{userProfile\.name\}/g, userProfile.name);
@@ -821,8 +817,6 @@ const Character: React.FC = () => {
                 // Use selected template (same as ChatApp) with variable substitution
                 const templateObj = archivePrompts.find(p => p.id === selectedPromptId) || DEFAULT_ARCHIVE_PROMPTS[0];
                 let prompt = baseContext + '\n\n' + templateObj.content;
-                const sarMemoryBoundary = buildSARMemoryBoundaryInstruction(rawLog);
-                if (sarMemoryBoundary) prompt = `${sarMemoryBoundary}\n\n${prompt}`;
                 prompt = prompt.replace(/\$\{dateStr\}/g, date);
                 prompt = prompt.replace(/\$\{char\.name\}/g, formData.name);
                 prompt = prompt.replace(/\$\{userProfile\.name\}/g, userProfile.name);
@@ -929,7 +923,6 @@ const Character: React.FC = () => {
               .join('\n');
 
           if (msgText) messagesToAnalyze += `\n【最近的聊天记录 (Recent Chats - 仅用于检测近期变化)】:\n${msgText}\n`;
-          const sarMemoryBoundary = buildSARMemoryBoundaryInstruction(messagesToAnalyze);
 
           // 重置时不传旧印象，避免模型锚定在旧内容上
           const normalizedCurrentImpression = normalizeUserImpression(formData.impression);
@@ -948,7 +941,7 @@ const Character: React.FC = () => {
 \`\`\`json
 ${currentProfileJSON}
 \`\`\`
-${messagesToAnalyze}${sarMemoryBoundary ? `\n${sarMemoryBoundary}\n` : ''}
+${messagesToAnalyze}
 
 【重要：语气与视角】
 你【就是】"${charName}"。这份档案是你写的【私人笔记】。

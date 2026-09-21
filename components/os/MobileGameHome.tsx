@@ -8,7 +8,7 @@ import AppIcon from './AppIcon';
 import TokenImg from './TokenImg';
 import { getMobileGameArt } from './mobilegameArt';
 import { SCHEMES, hsl, schemePreview, type TgStyle } from './gotchiScheme';
-import { getChibi } from '../../utils/vrWorld/chibi';
+import { getChibi } from '../../utils/chibi';
 import { isDevDebugAvailable, subscribeDevDebugAvailability } from '../../utils/devDebug';
 
 // ===== 手游主题（mobilegame skin）=====
@@ -131,7 +131,6 @@ const QUICK_ENTRIES: { id: AppID; cn: string }[] = [
 const GRID_CARDS: { id: AppID; cn: string; en: string }[] = [
     { id: AppID.CheckPhone, cn: '查手机', en: 'PHONE' },
     { id: AppID.Date, cn: '见面', en: 'CONTACTS' },
-    { id: AppID.VRWorld, cn: '彼方', en: 'KANATA' },
     { id: AppID.Bank, cn: '存钱罐', en: 'PIGGYBANK' },
     { id: AppID.Schedule, cn: '日程', en: 'SCHEDULE' },
     { id: AppID.Settings, cn: '设置', en: 'SETTINGS' },
@@ -284,7 +283,7 @@ const MobileGameHome: React.FC = () => {
     const tagline = (widgetChar?.description || '不知名种草姬').slice(0, 36);
     const announcement = lastMessage || widgetChar?.description || '一切如常，等待新的故事发生。';
     const expPct = Math.min(100, Math.round((stats.exp / stats.expMax) * 100));
-    // 时钟卡角色：优先彼方 chibi 小贴纸（透明立绘），没有就头像融合
+    // 时钟卡角色：优先透明立绘，没有就用头像兜底。
     const chibi = widgetChar ? getChibi(widgetChar) : null;
 
     const drawerApps = useMemo(

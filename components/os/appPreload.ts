@@ -44,7 +44,6 @@ const importers: Partial<Record<AppID, () => Promise<unknown>>> = {
   [AppID.Social]: () => import('../../apps/SocialApp'),
   [AppID.Study]: () => import('../../apps/StudyApp'),
   [AppID.FAQ]: () => import('../../apps/FAQApp'),
-  [AppID.Game]: () => import('../../apps/GameApp'),
   [AppID.Worldbook]: () => import('../../apps/WorldbookApp'),
   [AppID.Novel]: () => import('../../apps/NovelApp'),
   [AppID.Bank]: () => import('../../apps/BankApp'),
@@ -56,13 +55,11 @@ const importers: Partial<Record<AppID, () => Promise<unknown>>> = {
   [AppID.Call]: () => import('../../apps/CallApp'),
   [AppID.VoiceDesigner]: () => import('../../apps/VoiceDesignerApp'),
   [AppID.Guidebook]: () => import('../../apps/GuidebookApp'),
-  [AppID.LifeSim]: () => import('../../apps/LifeSimApp'),
   [AppID.MemoryPalace]: () => import('../../apps/MemoryPalaceApp'),
   [AppID.Handbook]: () => import('../../apps/HandbookApp'),
   [AppID.QQBridge]: () => import('../../apps/QQBridge'),
   [AppID.HotNews]: () => import('../../apps/HotNewsApp'),
   [AppID.SpecialMoments]: () => import('../ValentineEvent'),
-  [AppID.VRWorld]: () => import('../../apps/VRWorldApp'),
   [AppID.CharCreatorDev]: () => import('../../apps/CharCreatorDevApp'),
 };
 

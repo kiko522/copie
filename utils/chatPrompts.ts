@@ -1,11 +1,8 @@
-import { sarPublicContext } from './vrWorld/kanataPublicContext';
-import { kanataTitleContext } from './vrWorld/kanataTitle';
 import { selectCharacterContextMessages } from './chatContextRange';
 
 import { CharacterProfile, UserProfile, Message, Emoji, EmojiCategory, GroupProfile, RealtimeConfig, DailySchedule } from '../types';
 import { ContextBuilder } from './context';
 import { DB } from './db';
-import { formatLifeSimResetCardForContext } from './lifeSimChatCard';
 import { formatQixiEventCardForContext, tryParseQixiEventChatCard } from './qixiChatCard';
 import { normalizeMessageContent, stickerNameFromUrl, theaterWhenPhrase } from './messageFormat';
 import { formatTransferRecord } from './transferFormat';
@@ -82,7 +79,6 @@ function summarizeGroupMsgContent(m: Message): string {
         case 'mcd_card': return '[麦当劳点餐]';
         case 'html_card': return '[HTML卡片]';
         case 'news_card': return '[新闻卡片]';
-        case 'trpg_card': return `[TRPG游戏片段${meta.trpg?.gameTitle ? '：《' + meta.trpg.gameTitle + '》' : ''}]`;
         case 'novel_card': return `[笔友会小说章节${meta.novel?.bookTitle ? '：《' + meta.novel.bookTitle + '》' : ''}]`;
         case 'world_card': return `[家园生活记录${meta.worldName ? '：' + meta.worldName : ''}]`;
         case 'sim_card': return `[一段回忆${meta.simCard?.theme ? '：' + meta.simCard.theme : ''}]`;
@@ -597,37 +593,6 @@ ${groupLogStr}\n`;
         baseSystemPrompt += feishuDiaryText;
         baseSystemPrompt += notionNotesText;
         baseSystemPrompt += lifeRecordText;
-
-        // 彼方常驻设定：仅对启用了「彼方」的角色注入。让角色在聊天里始终知道彼方是什么，
-        // 不再依赖累积的 vr_card 动态 / 记忆总结（那些会被压缩、丢掉"彼方=VR游戏"的框定，
-        // 导致角色把"彼方·留言簿"之类当成现实地名）。措辞与 vrWorld/prompts.ts 的世界观一致。
-        if (char.vrState?.enabled) {
-            if (!forFirePack) volatileState += `\n${kanataTitleContext(char.vrState.title)}\n`;
-            baseSystemPrompt += `\n### 关于《彼方》
-《彼方》是一款真实存在、你会亲自进入去玩的 VR 社交游戏（功能上类似 VRChat）：你用自己亲手捏的 Q 版化身在里头走动、进出图书馆 / 听歌房 / 留言簿 / 娱乐室 / 邮局 / SAR 活动室等房间、撞见别的玩家（其他角色的化身）。这不是做梦或比喻；实际参与时，经历发生在游戏世界里，和你跟用户的现实相处是两码事、互不冲突。你以符合自身身份与世界观的方式进入并理解它——怎么进去全凭你自己的设定，但始终保持你本来的身份。聊到彼方里的经历（包括"彼方·留言簿""彼方·动态"之类的记录）时，就当成"我在《彼方》里做过的事"来讲，别说成现实里发生的。\n`;
-
-            baseSystemPrompt += `${sarPublicContext()}\n`;
-
-            // 用户本人也接入了彼方时，告诉（同样启用彼方的）角色"用户此刻在彼方做什么"。
-            // 强调这只是虚拟空间的挂机状态，不代表用户本人真的在场——避免角色据此误判现实。
-            // 注意：用户登出（vrState.enabled=false）后这段自然不再注入。
-            // 用户所在房间/状态实时变 → 进 volatileState（《彼方》是什么的框定仍留在稳定段）。
-            // 打包时不注入：这一段说的是「用户此刻挂在哪个房间」，烤进模板之后，用户下线
-            // 好几个小时了角色还在说「看你小人挂在听歌房」。它没有对应的到点槽位——
-            // worker 够不着用户此刻的彼方状态，所以是「不补」的那一类。
-            const uv = forFirePack ? null : userProfile?.vrState;
-            if (uv?.enabled) {
-                const VR_ROOM_NAMES: Record<string, string> = {
-                    library: '图书馆', music: '听歌房', guestbook: '留言簿', gym: '娱乐室', postoffice: '邮局', sar: 'SAR 活动室', cafe: '糯米鸡研发中心',
-                };
-                const roomName = VR_ROOM_NAMES[uv.currentRoom || ''] || '彼方';
-                const act = (uv.activity || '').trim();
-                const uname = userProfile?.name || '用户';
-                volatileState += `\n### ${uname} 此刻也在《彼方》里
-${uname} 的化身正挂在《彼方》的【${roomName}】${act ? `，状态写着：「${act}」` : ''}。在彼方里你会看到 ta 的小人、也知道那就是 ${uname} 本人的化身，可以对着 ta 的虚拟形象做你自己的动作、搭话、围观或调侃。
-但务必记住：这只是 ta 挂在虚拟空间里的一个化身状态（类似游戏挂机 / AFK），**并不代表 ${uname} 本人此刻真守在游戏里**——ta 很可能早已离开屏幕、正在现实里忙别的或休息。所以别据此认定"ta 正盯着你""ta 现实里也在干这件事"，也别把它当成 ta 在跟你说话。你和 ta 的真实关系、近况一律以你们的聊天记录为准；这条只是彼方这个虚拟空间里的一个在场提示而已。\n`;
-            }
-        }
 
         const emojiContextStr = ChatPrompts.buildEmojiContext(emojis, categories);
         const searchEnabled = !!(realtimeConfig?.newsEnabled && realtimeConfig?.newsApiKey);
@@ -1291,15 +1256,6 @@ ${userProfile.name} 给你反馈时，别当成约束，当成信任——ta 在
                     ].filter(Boolean).join(' ');
                     content = `${timeStr} [${sender}分享了小红书笔记]\n标题: ${note.title || '无标题'}\n作者: ${note.author || '未知'}\n互动: ${interactions}\n简介: ${note.desc || '无'}${commentsLine}\n${m.role === 'user' ? '(请根据你的性格对这个帖子发表看法)' : ''}`;
                 }
-                else if ((m.type as string) === 'vr_card') {
-                    // vr_card：你自己进入 VR 社交游戏《彼方》时留下的动态。
-                    // 启用了彼方的角色已在系统提示里常驻"《彼方》是什么"的设定，这里就不再逐卡重复，
-                    // 只留一句极简标记省 token；没启用彼方的角色（可能是旧卡片）才补完整框定兜底。
-                    const body = typeof m.content === 'string' ? m.content : '';
-                    content = char.vrState?.enabled
-                        ? `${timeStr}（你在《彼方》里的动态）\n${body}`
-                        : `${timeStr}（系统记录：这是你之前自己进入 VR 社交游戏《彼方》(功能上类似 VRChat) 时留下的动态——你确实进入并参与了这款游戏，只是事情发生在游戏世界里。聊到时就当成"我在《彼方》里做的事"来讲，别说成现实里发生的经历。）\n${body}`;
-                }
                 else if ((m.type as string) === 'world_card') {
                     // world_card：你在「家园」共同世界里的生活记录（卡片正文已是可读文本，
                     // 含小说式行为描述/动态/给同伴发的消息）。框定一句"这是共同世界里的生活"，
@@ -1403,9 +1359,7 @@ ${userProfile.name} 给你反馈时，别当成约束，当成信任——ta 在
                     try {
                         const card = m.metadata?.scoreCard || JSON.parse(m.content);
                         const qixiCard = tryParseQixiEventChatCard(card);
-                        if (card?.type === 'lifesim_reset_card') {
-                            content = `${timeStr} ${formatLifeSimResetCardForContext(card, char?.name)}`;
-                        } else if (qixiCard) {
+                        if (qixiCard) {
                             content = `${timeStr} ${formatQixiEventCardForContext(qixiCard, 'char')}`;
                         } else if (card?.type === 'diary_card') {
                             const uName = card.userName || userProfile?.name || '用户';
@@ -1441,9 +1395,8 @@ ${userProfile.name} 给你反馈时，别当成约束，当成信任——ta 在
                         content = `${timeStr} [系统卡片]`;
                     }
                 }
-                else if ((m.type as string) === 'trpg_card' || (m.type as string) === 'novel_card') {
-                    // TRPG 跑团片段 / 笔友会小说章节：从对应 app 多选转发进来的内容。
-                    // 复用 normalizeMessageContent 翻成完整文本，让角色"记得"一起玩过/写过什么。
+                else if ((m.type as string) === 'novel_card') {
+                    // 笔友会小说章节：复用 normalizeMessageContent 翻成完整文本。
                     content = `${timeStr} ${normalizeMessageContent(m, char?.name || '你', userProfile?.name || '用户')}`;
                 }
                 else content = `${timeStr} ${sourceTag} ${content}`;

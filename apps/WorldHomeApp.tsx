@@ -21,7 +21,6 @@ import {
     Lightning, NotePencil, PaperPlaneTilt, EyeSlash,
 } from '@phosphor-icons/react';
 import { DB } from '../utils/db';
-import { getChibi } from '../utils/vrWorld/chibi';
 import TokenImg from '../components/os/TokenImg';
 import { WorldScheduler, toTickEntries } from '../utils/worldHome/scheduler';
 import { isWorldRunning, injectWorldCard } from '../utils/worldHome/engine';
@@ -33,6 +32,7 @@ import { safeFetchJson } from '../utils/safeApi';
 import { WORLD_API_KEY, WORLD_CUSTOM_STYLE_KEY } from '../utils/worldHome/localBackup';
 import { CharacterGroupFilterBar, filterCharactersByGroup, GROUP_FILTER_ALL } from '../components/character/CharacterGroupFilter';
 import { trackEvent } from '../utils/analytics';
+import { getChibi } from '../utils/chibi';
 import type { WorldProfile, WorldEpisode, WorldHomeMode, WorldTimeMode, WorldHouse, WorldThread, WorldChatMessage, WorldNarrativeStyle, CharacterProfile, WorldCharBeat, APIConfig, ApiPreset } from '../types';
 
 /**

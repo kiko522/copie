@@ -68,12 +68,10 @@ export const Icons: Record<string, React.FC<{ className?: string }>> = {
   Music: ({ className }) => <MusicNotes className={className} weight="regular" />,
   Call: ({ className }) => <PhoneCall className={className} weight="regular" />,
   Guidebook: ({ className }) => <Crosshair className={className} weight="regular" />,
-  LifeSim: ({ className }) => <Smiley className={className} weight="regular" />,
   MemoryPalace: ({ className }) => <Brain className={className} weight="regular" />,
   Handbook: ({ className }) => <Notebook className={className} weight="regular" />,
   QQBridge: ({ className }) => <Plugs className={className} weight="regular" />,
   HotNews: ({ className }) => <Newspaper className={className} weight="regular" />,
-  VRWorld: ({ className }) => <Planet className={className} weight="regular" />,
   CharCreatorDev: ({ className }) => <Wrench className={className} weight="regular" />,
   WorldHome: ({ className }) => <HouseLine className={className} weight="regular" />,
 };
@@ -96,10 +94,8 @@ export const INSTALLED_APPS: AppConfig[] = [
   // { id: AppID.Handbook, name: '手账', icon: 'Handbook', color: 'fuchsia' }, // Hidden temporarily, pending update
   { id: AppID.Social, name: 'Spark', icon: 'Social', color: 'red' },
   { id: AppID.Study, name: '自习室', icon: 'Study', color: 'emerald' },
-  { id: AppID.Game, name: 'TRPG', icon: 'Game', color: 'orange' },
   { id: AppID.Novel, name: '笔友会', icon: 'Novel', color: 'amber' },
   { id: AppID.Songwriting, name: '写歌', icon: 'Songwriting', color: 'fuchsia' },
-  { id: AppID.VRWorld, name: '彼方', icon: 'VRWorld', color: 'indigo' },
   { id: AppID.Schedule, name: '时光契约', icon: 'Schedule', color: 'cyan' },
   { id: AppID.Worldbook, name: '世界书', icon: 'Worldbook', color: 'indigo' },
   { id: AppID.HotNews, name: '热点', icon: 'HotNews', color: 'red' },
@@ -111,7 +107,6 @@ export const INSTALLED_APPS: AppConfig[] = [
   { id: AppID.Appearance, name: '外观', icon: 'Appearance', color: 'slate' },
   { id: AppID.Settings, name: '设置', icon: 'Settings', color: 'slate' },
   { id: AppID.Guidebook, name: '攻略本', icon: 'Guidebook', color: 'slate' },
-  { id: AppID.LifeSim, name: '都市人生', icon: 'LifeSim', color: 'purple' },
   { id: AppID.SpecialMoments, name: '特别时光', icon: 'SpecialMoments', color: 'pink' },
   { id: AppID.Music, name: '音乐', icon: 'Music', color: 'rose' },
   { id: AppID.CharCreatorDev, name: '捏脸·开发', icon: 'CharCreatorDev', color: 'amber' }, // 仅开发模式显示（Launcher 过滤）

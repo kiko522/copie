@@ -1,5 +1,3 @@
-import { SAR_CHANGELOG } from '../utils/sarUpdate';
-
 import React, { useEffect, useState } from 'react';
 import { useOS } from '../context/OSContext';
 import { Sparkle } from '@phosphor-icons/react';
@@ -10,7 +8,6 @@ import {
     CHANGELOG_2026_05_10,
     CHANGELOG_2026_05_17,
     CHANGELOG_2026_05_27,
-    CHANGELOG_2026_06_05,
     CHANGELOG_2026_06_14,
     CHANGELOG_2026_06_21,
     CHANGELOG_2026_06_26,
@@ -112,14 +109,6 @@ interface ChangelogEntry {
 
 const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     {
-        id: SAR_CHANGELOG,
-        title: '2026 年 9 月 11 日 · 彼方来信 · SAR',
-        subtitle: 'SAR 活动室与星级故事 · 钓鱼和恐龙花园 · 芯片、推演与模块 · 私聊发送习惯 · PNG 图片分享',
-        date: '2026-09-11',
-        src: 'changelogs/2026-9-11.html',
-        accent: 'from-emerald-50 to-amber-50 border-emerald-200',
-    },
-    {
         id: CHANGELOG_2026_08_30,
         title: '2026 年 8 月 30 日 · 协同工作台',
         subtitle: '角色协同工作双模式 · Word / PDF 与文件交付 · 可安装美化、角色卡和世界书 · 独立文件库与归档记忆 · 协同数据随系统备份导入导出',
@@ -146,7 +135,7 @@ const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     {
         id: CHANGELOG_2026_07_10,
         title: '2026 年 7 月 10 日 · 生活统计',
-        subtitle: '档案「生活统计」四模块 + 角色注入代记 · 彼方全服写诗 · 捏人换画风 + PSD 批量导入 + 手办区 · 神经链接角色分组 · 小屋装修大升级 + 家园「凌晨」段 · 记忆宫殿门牌（测试中）· 专属提示铃声 · 壁纸/小屋图改存 Blob · 一大批 iOS 适配与散修',
+        subtitle: '档案「生活统计」四模块 + 角色注入代记 · 捏人换画风 + PSD 批量导入 + 手办区 · 神经链接角色分组 · 小屋装修大升级 + 家园「凌晨」段 · 记忆宫殿门牌（测试中）· 专属提示铃声 · 壁纸/小屋图改存 Blob · 一大批 iOS 适配与散修',
         date: '2026-07-10',
         src: 'changelogs/2026-7-10.html',
         accent: 'from-rose-100 to-violet-100 border-rose-200',
@@ -174,14 +163,6 @@ const CHANGELOG_ENTRIES: ChangelogEntry[] = [
         date: '2026-06-14',
         src: 'changelogs/2026-6-14.html',
         accent: 'from-violet-100 to-purple-100 border-violet-200',
-    },
-    {
-        id: CHANGELOG_2026_06_05,
-        title: '2026 年 6 月 5 日 · 彼方上线',
-        subtitle: '角色自主登入的 VR 小世界 · 邮局漂流信 · 留言簿原话上墙 · 隐藏小人',
-        date: '2026-06-05',
-        src: 'changelogs/2026-6-5.html',
-        accent: 'from-indigo-100 to-purple-100 border-indigo-200',
     },
     {
         id: CHANGELOG_2026_05_27,

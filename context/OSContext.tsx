@@ -2,7 +2,6 @@
 import { initializeFirstUseGuide } from '../utils/firstUseGuide';
 import { FEEDBACK_INVITATION_KEY, hasPriorFeedbackInstallEvidence, initializeFeedbackInvitation, suppressFeedbackInvitation } from '../utils/feedbackInvitation';
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
-import type { VRSARActivity } from '../types';
 import { APIConfig, AppID, OSTheme, VirtualTime, CharacterProfile, CharacterGroup, ChatTheme, Toast, FullBackupData, UserProfile, ApiPreset, GroupProfile, SystemLog, Worldbook, NovelBook, SongSheet, Message, RealtimeConfig, AppearancePreset, CloudBackupConfig, CloudBackupFile, MemoryPalaceFeatureFlags } from '../types';
 import { DB } from '../utils/db';
 import type { AvatarTouchRecord } from '../utils/avatarTouch';
@@ -23,11 +22,6 @@ import { ensureCompanionVoiceAssetsForBackup, isCompanionVoiceAssetId } from '..
 import { collectCharacterCompanionVoiceAssetIds } from '../utils/companionPresets';
 import { encodeVectorsForBackup, encodeVectorsForBackupChunked } from '../utils/memoryPalace/db';
 import { ProactiveChat } from '../utils/proactiveChat';
-import { VRScheduler, type VRSessionOutcome } from '../utils/vrWorld/scheduler';
-import { runVRSession } from '../utils/vrWorld/runSession';
-import { allowsAutomaticVR } from '../utils/vrWorld/participation';
-import { logVRApiCall } from '../utils/vrWorld/vrApi';
-import { VR_DEFAULT_INTERVAL_MIN } from '../utils/vrWorld/constants';
 import { WorldScheduler, toTickEntries } from '../utils/worldHome/scheduler';
 import { runWorldEpisode, rerollWorldCharBeat } from '../utils/worldHome/engine';
 import { migrateWorldDaySegs } from '../utils/worldHome/prompts';
@@ -38,13 +32,12 @@ import { isGlobalStreamEnabled, upgradeChatBodyToStream, assembleUpgradedRespons
 import { rewriteStaleWorkerUrl } from '../utils/proxyWorker';
 import { buildFetchFailureDetail, classifyFetchFailure, describeReachabilityProbe, parseTargetUrl, probeOriginReachability, shouldProbeReachability, summarizeFetchRequestBody } from '../utils/networkFailureDiagnosis';
 import { INSTALLED_APPS, HIDDEN_APP_NAMES } from '../constants';
-import { isAnalyticsRequestUrl, trackEvent, shouldReportSnapshot, trackDataScaleOnce, trackCurrentAppearanceOnce, trackCurrentCharSettingsOnce, trackCurrentFeaturesOnce, trackCurrentSARFeaturesOnce } from '../utils/analytics';
+import { isAnalyticsRequestUrl, trackEvent, shouldReportSnapshot, trackDataScaleOnce, trackCurrentAppearanceOnce, trackCurrentCharSettingsOnce, trackCurrentFeaturesOnce } from '../utils/analytics';
 import { loadChatInputPreferences, saveChatInputPreferences } from '../utils/chatInputPreferences';
-import { collectAppearance, collectCharSettings, collectDataScale, collectFeatureFlagsAsync, collectSARFeatureFlags } from '../utils/analyticsSnapshot';
+import { collectAppearance, collectCharSettings, collectDataScale, collectFeatureFlagsAsync } from '../utils/analyticsSnapshot';
 import { normalizeApiConfig, normalizeApiPreset } from '../utils/apiConfigNormalize';
 import { getCheckPhoneApi, setCheckPhoneApi } from '../utils/checkPhoneApi';
 import { markBackupDone } from '../utils/backupReminder';
-import { collectSARLocalBackup, restoreSARLocalBackup } from '../utils/vrWorld/sarBackup';
 import { normalizeCharacterImpression, normalizeCharacterDefaults } from '../utils/impression';
 import { normalizeModelIds } from '../utils/modelList';
 import {
@@ -85,8 +78,6 @@ import { isBenignApplicationConsoleMessage } from '../utils/applicationConsole';
 import { initLocalStorageMirror } from '../utils/lsMirror';
 import { cleanupInstantPushLegacyData } from '../utils/instantPushLegacyCleanup';
 // 备份用：把存在 localStorage 的本机配置随导出一起带走（键名须与 importFullData 对齐）
-import { exportPostOfficeLocal } from '../utils/vrWorld/postOffice';
-import { exportSignalLocal } from '../utils/vrWorld/signal';
 import { exportWorldHomeLocal } from '../utils/worldHome/localBackup';
 import { exportLuckinLocal } from '../utils/luckinMcpClient';
 import { exportMcdLocal } from '../utils/mcdMcpClient';
@@ -1127,8 +1118,11 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   }, [isDataLoaded, realtimeConfig, cloudBackupConfig, memoryPalaceConfig, remoteVectorConfig, apiConfig, apiPresets, characters]);
 
   useEffect(() => {
-      if (!isDataLoaded || !shouldReportSnapshot('sar')) return;
-      trackCurrentSARFeaturesOnce(collectSARFeatureFlags());
+      if (!isDataLoaded) return;
+      // 彼方下线后清掉不随 IndexedDB 迁移的本地调度表，防止旧安装残留后台计时状态。
+      localStorage.removeItem('vr_schedules');
+      localStorage.removeItem('vr_last_fire');
+      localStorage.removeItem('vr_fail_streak');
   }, [isDataLoaded]);
 
   // --- Global Error Interception ---
@@ -2654,72 +2648,6 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           void runProactive(charId);
       });
 
-      // 「彼方」自主登入 —— 独立调度，复用同一批 refs 拿最新状态
-      const runVR = async (charId: string, room?: string, letterId?: string, manual?: boolean, sarActivity?: VRSARActivity) => {
-          const char = charactersRef.current.find(c => c.id === charId);
-          // 调度表里还排着队，角色却已经不接入了（或者压根被删了）：这条调度不该继续存在。
-          // 就地撤掉并留一行记录 —— 不撤的话它会一直空转，而空转是完全静默的，
-          // 用户那边只看得到「明明全关了，调用记录还在涨」，谁也说不清是哪一边错了。
-          if (!char || !char.vrState?.enabled || (!manual && !allowsAutomaticVR(char.vrState))) {
-              VRScheduler.stop(charId);
-              void logVRApiCall({
-                  ts: Date.now(), charId, charName: char?.name, ok: false, ms: 0,
-                  kind: 'skipped', charEnabled: !!char?.vrState?.enabled,
-                  note: char?.vrState?.enabled ? '角色仅手动活动，已撤掉这条残留调度' : char ? '角色未接入彼方，已撤掉这条残留调度' : '角色已不存在，已撤掉这条残留调度',
-              });
-              return;
-          }
-          if (!userProfileRef.current) return;
-          let outcome: VRSessionOutcome = 'skipped';
-          try {
-              const result = await runVRSession({
-                  char,
-                  characters: charactersRef.current,
-                  apiConfig: apiConfigRef.current,
-                  userProfile: userProfileRef.current,
-                  groups: groupsRef.current,
-                   realtimeConfig: realtimeConfigRef.current,
-                   memoryPalaceConfig: memoryPalaceConfigRef.current,
-                   updateCharacter,
-                   updateUserProfile,
-                   forcedRoom: room as any,
-                  forcedSARActivity: sarActivity,
-                  forcedLetterId: letterId,
-                  manual,
-              });
-              // 没书没歌、房间被别人占着这些都不算账，只有真的没调通模型才记一笔失败
-              outcome = result.ok ? 'ok' : (result.reason === 'api-error' ? 'failed' : 'skipped');
-          } catch (e) {
-              console.error('[VRWorld] runVR error', e);
-              outcome = 'failed';
-          }
-
-          if (!allowsAutomaticVR(charactersRef.current.find(c => c.id === charId)?.vrState)) return;
-          const { tripped, streak } = VRScheduler.report(charId, outcome);
-          if (!tripped) return;
-          // 熔断了：调度已经被掐掉，这里把角色一并落回未接入，让界面和实际跑的东西对上，
-          // 免得又变成「显示未接入、后台还在动」。用函数式更新拿最新的 vrState，
-          // 别拿会话开头那份快照写回去，那会把这一轮刚记下的房间和时间抹掉。
-          void updateCharacter(charId, prev => ({
-              vrState: { ...(prev.vrState || { intervalMinutes: VR_DEFAULT_INTERVAL_MIN }), enabled: false } as any,
-          }));
-          void logVRApiCall({
-              ts: Date.now(), charId, charName: char.name, ok: false, ms: 0,
-              kind: 'tripped',
-              note: `连续 ${streak} 次没能调通模型，已暂停 ${char.name} 的自主登入`,
-          });
-          addToast(`${char.name} 连续 ${streak} 次没能调通模型，已暂停 ta 在彼方的自主登入`, 'error');
-      };
-      VRScheduler.onTrigger((charId: string, room?: string, letterId?: string, manual?: boolean, sarActivity?: VRSARActivity) => { void runVR(charId, room, letterId, manual, sarActivity); });
-
-      // 以角色 vrState 为准对账调度表：调度表存 localStorage、不随备份迁移，
-      // 导入备份后角色虽 enabled 但调度表为空，这里补建/清理使其按时触发。
-      VRScheduler.reconcile(
-          charactersRef.current
-              .filter(c => allowsAutomaticVR(c.vrState))
-              .map(c => ({ charId: c.id, intervalMinutes: c.vrState?.intervalMinutes || VR_DEFAULT_INTERVAL_MIN }))
-      );
-
       // 「家园」演绎 —— 引擎跑在全局：用户不在家园界面（可能正在和别人私聊）时，
       // 观测/离线 tick 触发的一轮链式演绎照样完成并注入 world_card。
       const runWorld = async (worldId: string, trigger: 'observe' | 'tick') => {
@@ -2790,7 +2718,6 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
       return () => {
           // Cleanup: detach proactive listeners when OSContext unmounts (unlikely but safe)
           ProactiveChat.onTrigger(() => {});
-          VRScheduler.onTrigger(() => {});
           WorldScheduler.onTrigger(() => {});
           window.removeEventListener('world-reroll-request', onRerollRequest as EventListener);
       };
@@ -3994,7 +3921,6 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
               // SAR 活动室：公告/初见、双卡池及人格推演记录必须跟用户历史一起迁移。
               chatInputPreferences: (mode === 'text_only' || mode === 'full') ? loadChatInputPreferences() : undefined,
-              sarLocalState: (mode === 'text_only' || mode === 'full') ? collectSARLocalBackup() : undefined,
 
               // 推送凭据 (VAPID)
               pushVapid: (mode === 'text_only' || mode === 'full') ? (() => { try { const s = localStorage.getItem('push_vapid_v1'); return s ? JSON.parse(s) : undefined; } catch { return undefined; } })() : undefined,
@@ -4107,8 +4033,6 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
               // 本机 localStorage 配置（导入端 importFullData 已支持恢复，之前导出漏发导致丢失）
               //  · 瑞幸 / 麦当劳 MCP 的点单 token + 启用状态（用户说的「那个码」）
               //  · 邮局身份、家园全局 API + 文风收藏
-              vrPostOffice: (mode === 'text_only' || mode === 'full') ? exportPostOfficeLocal() : undefined,
-              vrSignal: (mode === 'text_only' || mode === 'full') ? exportSignalLocal() : undefined, // 信号坠落处：句子归属「你·角色」+ 反复用清单
               worldHomeLocal: (mode === 'text_only' || mode === 'full') ? exportWorldHomeLocal() : undefined,
               luckinLocal: (mode === 'text_only' || mode === 'full') ? exportLuckinLocal() : undefined,
               mcdLocal: (mode === 'text_only' || mode === 'full') ? exportMcdLocal() : undefined,
@@ -5004,8 +4928,6 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           }
           
           showImportProgress('settings', '正在恢复系统设置...', 92, { current: '系统设置', currentFile: '' });
-          if (data.sarLocalState) await restoreAssetsInPlace(data.sarLocalState, 'SAR 存档');
-          restoreSARLocalBackup(data.sarLocalState, { replaceMissing: replacesPrimaryHistory });
           if (data.chatInputPreferences !== undefined) saveChatInputPreferences(data.chatInputPreferences);
           if (data.theme) {
               await restoreAssetsInPlace(data.theme, '系统主题');

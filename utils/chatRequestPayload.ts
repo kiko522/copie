@@ -40,8 +40,6 @@ import { cleanApiMessages, flattenImageContentParts } from './promptMessageClean
 import { materializeVisionDescriptions } from './visionApi';
 import type { RecallEntryPoint, RecallTrace } from './memoryPalace/trace';
 import { loadCollaborationFileCabinetBlock } from '../features/collaboration/chatLibrary';
-import { buildSARUserSurfaceRequest, selectSARUserSurfaceTargets } from './vrWorld/sarUserSurface';
-import { getSARModuleRuntimePlan } from './vrWorld/sarModuleRuntime';
 
 export { cleanApiMessages, flattenImageContentParts } from './promptMessageCleanup';
 
@@ -143,7 +141,6 @@ export interface BuildChatPayloadResult {
         mcpChatActive: boolean;
         htmlActive: boolean;
         thinkingActive: boolean;
-        sarModuleActive: boolean;
         promptBuildSkipped: boolean;
     };
 }
@@ -288,7 +285,6 @@ export async function buildChatRequestPayload(input: BuildChatPayloadInput): Pro
                 mcpChatActive: false,
                 htmlActive: false,
                 thinkingActive: false,
-                sarModuleActive: false,
                 promptBuildSkipped: true,
             },
         };
@@ -341,14 +337,6 @@ export async function buildChatRequestPayload(input: BuildChatPayloadInput): Pro
     );
     let systemPrompt = parts.stable;
     let volatileTail = parts.volatileState;
-    const sarModulePlan = input.recallEntryPoint === 'chat_app'
-        ? getSARModuleRuntimePlan(char, userProfile)
-        : undefined;
-    const sarModuleBlock = input.recallEntryPoint === 'chat_app'
-        ? ContextBuilder.buildSARModuleContext(char, userProfile, 'chat')
-        : '';
-    const sarEnvelopeActive = sarModulePlan?.requiresEnvelope === true;
-
     // ── 4. 双语指令注入 ───────────────────────────────────
     const sourceLang = normalizeTranslationLangLabel(translationConfig?.sourceLang);
     const targetLang = normalizeTranslationLangLabel(translationConfig?.targetLang);
@@ -364,9 +352,7 @@ export async function buildChatRequestPayload(input: BuildChatPayloadInput): Pro
 规则：
 - 每句话单独包裹一个<翻译>标签
 - 多句话就输出多个<翻译>标签，一句一个
-- ${sarEnvelopeActive
-            ? 'SAR 模块生效中：最外层必须是 <SAR_MODULE_OUTPUT>；在 CHAR_TRUE 与 CHAR_SURFACE 字段内部，各自用完整的 <翻译> 标签包裹每句话。除这个 SAR 容器与字段标签外，不写散落文字'
-            : '<翻译>标签外不要写任何文字'}
+- <翻译>标签外不要写任何文字
 - 表情包命令 [[SEND_EMOJI: ...]] 放在所有<翻译>标签外面
 - 引用命令 [[QUOTE: ...]] 也放在所有<翻译>标签外面；引用内容请原样照抄用户说过的原文（不要翻译、不要包<翻译>标签）
 
@@ -490,7 +476,6 @@ export async function buildChatRequestPayload(input: BuildChatPayloadInput): Pro
     // 「关于对方的表达」+「回到你自己」必须是易变尾段的最后内容：修复旧版把双语/HTML/
     // 思考链/点单块拼在钢印之后、模型开口前最后读到的是格式说明书的问题。
     volatileTail += parts.recencyTail;
-    if (sarModuleBlock) volatileTail += sarModuleBlock;
 
     // 结构：[稳定 system] + [历史消息] + [易变状态 system] (+ 末尾 reminder)。
     // 稳定前缀不再包含分钟级时间戳等易变内容 → 支持前缀缓存的中转能跨轮命中；
@@ -505,27 +490,12 @@ export async function buildChatRequestPayload(input: BuildChatPayloadInput): Pro
     if (bilingualActive) {
         fullMessages.push({
             role: 'system',
-            content: sarEnvelopeActive
-                ? `[Reminder: 最外层输出 <SAR_MODULE_OUTPUT>；CHAR_TRUE 和 CHAR_SURFACE 内的每个气泡都分别使用完整的 <翻译><原文>...</原文><译文>...</译文></翻译>，原文/译文语义一致，一句一个标签。]`
-                : `[Reminder: 每句话必须用 <翻译><原文>...</原文><译文>...</译文></翻译> 标签包裹。一句一个标签。绝对不能省略。]`,
+            content: `[Reminder: 每句话必须用 <翻译><原文>...</原文><译文>...</译文></翻译> 标签包裹。一句一个标签。绝对不能省略。]`,
         });
     }
     if (mcpChatActive && !input.timelyByWorker) {
         fullMessages.push({ role: 'system', content: MCP_TAIL_REMINDER });
     }
-    if (sarModuleBlock) {
-        fullMessages.push({
-            role: 'system',
-            content: '[SAR MODULE REMINDER: 模块是角色在彼方能感知、能记得的外来装置，不是幕后文风要求；CHAR_TRUE 必须包含角色对异常的当下反应，不能若无其事。生效时最终只输出 <SAR_MODULE_OUTPUT> 容器。聊天的 CHAR_TRUE / CHAR_SURFACE 必须逐气泡对齐；纯括号动作原位逐字复制，禁止删泡、合并或新增气泡。内置翻译要在两字段中分别保留完整翻译标签；语音要保留 <语音>/<字幕> 结构并同步改写口播与字幕；“日文（中文翻译）”一类同泡格式不可把括号译文误判成动作。真实语义写 CHAR_TRUE，临时外显写 CHAR_SURFACE，用户外显写 USER_SURFACE，不得把外显当作内心。]',
-        });
-    }
-
-    if (sarModulePlan?.user?.phase === 'active') {
-        fullMessages.push({ role: 'system', content: buildSARUserSurfaceRequest(
-            selectSARUserSurfaceTargets(input.historyMsgs, char.id, sarModulePlan.user),
-        ) });
-    }
-
     // Dev 开关：多条 system 合并成开头一条，A/B 对照中转适配层对多 system 的计量行为。
     let finalMessages = fullMessages;
     if (isSystemMessageMergeEnabled()) {
@@ -542,6 +512,6 @@ export async function buildChatRequestPayload(input: BuildChatPayloadInput): Pro
         // 合并开关开着时多条 system 被并进开头一条，下标失去意义 → 交出 -1，调用方退回贴尾。
         volatileTailIndex: finalMessages === fullMessages ? 1 + messagesWithWorldbookDepth.length : -1,
         recallTrace,
-        flags: { bilingualActive, mcdActive, luckinActive, luckinChatActive, mcpChatActive, htmlActive, thinkingActive, sarModuleActive: !!sarModuleBlock, promptBuildSkipped: false },
+        flags: { bilingualActive, mcdActive, luckinActive, luckinChatActive, mcpChatActive, htmlActive, thinkingActive, promptBuildSkipped: false },
     };
 }
