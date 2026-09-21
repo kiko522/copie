@@ -6,6 +6,7 @@ import { searchTavily } from './tavily.mjs';
 import { fetchWeather } from './weather.mjs';
 import { CompanionStore } from './store.mjs';
 import { HeartbeatEngine } from './heartbeat.mjs';
+import { createRealtimeRoomCredentials } from './livekit-token.mjs';
 
 export const createCompanionApp = (config = loadConfig(), store = new CompanionStore(config.dataDir)) => {
   const heartbeat = new HeartbeatEngine({ config, store });
@@ -47,7 +48,16 @@ export const createCompanionApp = (config = loadConfig(), store = new CompanionS
           quietHours: `${config.quietStart}-${config.quietEnd}`,
           maxUnansweredSends: config.maxUnansweredSends,
         },
+        realtimeVoice: { configured: Boolean(config.livekitUrl && config.livekitApiKey && config.livekitApiSecret) },
       }, cors);
+    }
+
+    if (req.method === 'POST' && url.pathname === '/v1/realtime/token') {
+      const body = await readJsonBody(req, 16 * 1024);
+      return json(res, 200, createRealtimeRoomCredentials(config, {
+        characterId: body.characterId,
+        identity: body.identity,
+      }), cors);
     }
 
     if (req.method === 'GET' && url.pathname === '/v1/characters') {

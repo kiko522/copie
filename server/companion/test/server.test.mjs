@@ -16,6 +16,7 @@ test('authenticated character snapshot and outbox API', async () => {
     llmBaseUrl: '', llmApiKey: '', heartbeatModel: '', trendRadarMcpUrl: '',
     userTimeZone: 'Asia/Shanghai', quietStart: '02:00', quietEnd: '08:30',
     maxUnansweredSends: 3, heartbeatTickMs: 60_000, dataDir: dir,
+    livekitUrl: 'wss://example.livekit.cloud', livekitApiKey: 'APItest', livekitApiSecret: 'secret',
   };
   const app = createCompanionApp(config, store);
   await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve));
@@ -36,6 +37,12 @@ test('authenticated character snapshot and outbox API', async () => {
 
     assert.equal((await fetch(`${base}/v1/capabilities`)).status, 401);
     const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+    const realtime = await (await fetch(`${base}/v1/realtime/token`, {
+      method: 'POST', headers, body: JSON.stringify({ characterId: 'c1', identity: 'phone' }),
+    })).json();
+    assert.equal(realtime.livekitUrl, 'wss://example.livekit.cloud');
+    assert.match(realtime.room, /^sully-c1-/);
+    assert.equal(realtime.token.split('.').length, 3);
     const saved = await fetch(`${base}/v1/characters/c1`, {
       method: 'PUT', headers, body: JSON.stringify({ name: '小满', persona: '安静', recentMessages: [] }),
     });

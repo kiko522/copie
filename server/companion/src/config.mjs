@@ -42,6 +42,9 @@ export const loadConfig = (env = process.env) => ({
   maxUnansweredSends: asPositiveInt(env.MAX_UNANSWERED_SENDS, 3),
   heartbeatTickMs: asPositiveInt(env.HEARTBEAT_TICK_MS, 60_000),
   dataDir: String(env.DATA_DIR ?? './data').trim(),
+  livekitUrl: String(env.LIVEKIT_URL ?? '').trim(),
+  livekitApiKey: String(env.LIVEKIT_API_KEY ?? '').trim(),
+  livekitApiSecret: String(env.LIVEKIT_API_SECRET ?? '').trim(),
 });
 
 export const validateConfig = (config) => {
@@ -54,6 +57,13 @@ export const validateConfig = (config) => {
   }
   if (!/^\d{2}:\d{2}$/.test(config.quietStart) || !/^\d{2}:\d{2}$/.test(config.quietEnd)) {
     problems.push('QUIET_START / QUIET_END 必须是 HH:MM');
+  }
+  const livekitValues = [config.livekitUrl, config.livekitApiKey, config.livekitApiSecret];
+  if (livekitValues.some(Boolean) && !livekitValues.every(Boolean)) {
+    problems.push('LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET 必须同时填写');
+  }
+  if (config.livekitUrl && !config.livekitUrl.startsWith('wss://')) {
+    problems.push('LIVEKIT_URL 必须以 wss:// 开头');
   }
   return problems;
 };
