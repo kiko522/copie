@@ -8,6 +8,7 @@ interface Options {
     active: boolean;
     blocked: boolean;
     generating: boolean;
+    delayMs?: number;
     onGenerate: () => void;
 }
 
@@ -79,15 +80,18 @@ export function useChatAutoReply(options: Options) {
             setSeconds(null);
             return;
         }
-        setSeconds(2);
-        const tick = window.setTimeout(() => { if (ready()) setSeconds(1); }, 1000);
+        const delayMs = Math.max(0, current.current.delayMs ?? CHAT_AUTO_REPLY_DELAY_MS);
+        const deadline = Date.now() + delayMs;
+        const updateSeconds = () => setSeconds(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
+        updateSeconds();
+        const tick = window.setInterval(() => { if (ready()) updateSeconds(); }, 250);
         const timer = window.setTimeout(() => {
             if (!ready()) return;
             cancel();
             current.current.onGenerate();
-        }, CHAT_AUTO_REPLY_DELAY_MS);
-        return () => { window.clearTimeout(tick); window.clearTimeout(timer); };
-    }, [revision, visible, options.enabled, options.active, options.blocked, options.generating, options.conversationId, cancel]);
+        }, delayMs);
+        return () => { window.clearInterval(tick); window.clearTimeout(timer); };
+    }, [revision, visible, options.enabled, options.active, options.blocked, options.generating, options.conversationId, options.delayMs, cancel]);
 
     return { seconds, beginSend, cancel };
 }

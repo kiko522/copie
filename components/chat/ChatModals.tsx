@@ -6,6 +6,7 @@ import { CharacterProfile, Message, EmojiCategory, DailySchedule, ScheduleSlot, 
 import ScheduleCard from '../schedule/ScheduleCard';
 import EmotionSettingsPanel from './EmotionSettingsPanel';
 import ChatInputSettings from './ChatInputSettings';
+import KeyboardAutoReplySettings from './KeyboardAutoReplySettings';
 import ChatSettingsSection from './ChatSettingsSection';
 import type { ChatInputPreferences } from '../../utils/chatInputPreferences';
 import { isTranslationLangPreset, normalizeTranslationLangLabel, TRANSLATION_LANG_MAX_LENGTH, TRANSLATION_LANG_PRESETS } from '../../utils/translationLang';
@@ -392,6 +393,7 @@ const ChatModals: React.FC<ChatModalsProps> = ({
                 <div className="space-y-3">
                     <ChatSettingsSection title="输入与发送" summary="表情联想、回车与自动回复">
                         <ChatInputSettings value={settingsInputPreferences} onChange={setSettingsInputPreferences} />
+                        <KeyboardAutoReplySettings conversationId={activeCharacter.id} />
                     </ChatSettingsSection>
                     <ChatSettingsSection title="消息显示" summary="系统日志显示设置">
                         <div className="pt-2 border-t border-slate-100">

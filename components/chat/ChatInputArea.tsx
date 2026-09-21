@@ -126,6 +126,33 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
     }, [isInputFocused, onInputFocusChange]);
 
     useEffect(() => {
+        if (!autoReplyEnabled || !isInputFocused) return;
+        const viewport = window.visualViewport;
+        if (!viewport) return;
+        let keyboardWasOpen = false;
+        const measure = () => {
+            const inset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+            if (inset >= 80) {
+                keyboardWasOpen = true;
+                return;
+            }
+            if (keyboardWasOpen) {
+                keyboardWasOpen = false;
+                // 部分移动浏览器收起键盘后 textarea 仍保留 DOM 焦点；业务上视为结束编辑，
+                // 让自动回复开始倒计时。重新弹出键盘时 focus/resize 会恢复状态。
+                setIsInputFocused(false);
+            }
+        };
+        viewport.addEventListener('resize', measure);
+        viewport.addEventListener('scroll', measure);
+        measure();
+        return () => {
+            viewport.removeEventListener('resize', measure);
+            viewport.removeEventListener('scroll', measure);
+        };
+    }, [autoReplyEnabled, isInputFocused]);
+
+    useEffect(() => {
         setIsInputFocused(!!textareaRef.current && document.activeElement === textareaRef.current);
     }, [selectionMode, activeCharacterId]);
 

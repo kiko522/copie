@@ -43,6 +43,7 @@ import ChatDecorationAnnouncement from '../components/chat/ChatDecorationAnnounc
 import ChatDecorationPanel, {DecorationTab} from '../components/chat/ChatDecorationPanel';
 import ChatInputArea from '../components/chat/ChatInputArea';
 import { loadChatInputPreferences, saveChatInputPreferences } from '../utils/chatInputPreferences';
+import { getConversationKeyboardAutoReplyConfig, KEYBOARD_AUTO_REPLY_CONFIG_CHANGED } from '../utils/keyboardAutoReplyConfig';
 import InstantChatRouteNotice from '../components/chat/InstantChatRouteNotice';
 import MemoryRepairPortal from '../components/chat/MemoryRepairPortal';
 import FavoritesPortal from '../components/chat/VoiceFavoritesPortal';
@@ -56,7 +57,7 @@ import ActiveMsg2SettingsModal from '../components/chat/ActiveMsg2SettingsModal'
 import ThinkingChainSettingsModal from '../components/chat/ThinkingChainSettingsModal';
 import ScheduleChangeNotice from '../components/chat/ScheduleChangeNotice';
 import { useChatAI } from '../hooks/useChatAI';
-import { useChatAutoReply } from '../hooks/useChatAutoReply';
+import { CHAT_AUTO_REPLY_DELAY_MS, useChatAutoReply } from '../hooks/useChatAutoReply';
 import { cleanTextForTts, parseVoiceOutput } from '../utils/minimaxTts';
 import { collectVoiceBatchSubtitle, isPoisonedVoiceSubtitle } from '../utils/voiceSubtitle';
 import {
@@ -222,6 +223,7 @@ const Chat: React.FC = () => {
     const [settingsHideSysLogs, setSettingsHideSysLogs] = useState(false);
     const [inputPreferences, setInputPreferences] = useState(loadChatInputPreferences);
     const [settingsInputPreferences, setSettingsInputPreferences] = useState(loadChatInputPreferences);
+    const [keyboardAutoReplyRevision, setKeyboardAutoReplyRevision] = useState(0);
     const [settingsHtmlModeCustomPrompt, setSettingsHtmlModeCustomPrompt] = useState('');
     const contextSuiteAnyEnabled = memoryPalaceConfig.featureFlags?.recallRouter === true
         || memoryPalaceConfig.featureFlags?.interactionAdaptation === true
@@ -1187,6 +1189,12 @@ const Chat: React.FC = () => {
         else localStorage.removeItem(draftKey);
     };
 
+    useEffect(() => {
+        const refresh = () => setKeyboardAutoReplyRevision(value => value + 1);
+        window.addEventListener(KEYBOARD_AUTO_REPLY_CONFIG_CHANGED, refresh);
+        return () => window.removeEventListener(KEYBOARD_AUTO_REPLY_CONFIG_CHANGED, refresh);
+    }, []);
+
     useLayoutEffect(() => {
         if (!scrollRef.current || selectionMode) return;
         const currentLastId = messages.length > 0 ? messages[messages.length - 1].id : null;
@@ -1553,7 +1561,7 @@ const Chat: React.FC = () => {
 
         await reloadMessages(visibleCountRef.current);
         // 自动回复模式下允许连续挑表情，用户主动收起加号等面板后才计时。
-        if (!inputPreferences.autoReply) setShowPanel('none');
+        if (!autoReplyEnabled) setShowPanel('none');
 
         return true;
     };
@@ -1647,7 +1655,7 @@ const Chat: React.FC = () => {
         const finishImage = autoReply.beginSend(char?.id || null);
         try {
             const base64 = await processImage(file, { maxWidth: 600, quality: 0.6, forceJpeg: true });
-            if (!inputPreferences.autoReply) setShowPanel('none');
+            if (!autoReplyEnabled) setShowPanel('none');
             await handleSendText(base64, 'image');
         } catch (err: any) {
             addToast(err.message || '图片处理失败', 'error');
@@ -3396,11 +3404,16 @@ const Chat: React.FC = () => {
         return e.categoryId === activeCategory;
     }), [aiVisibleEmojis, activeCategory]);
 
+    const conversationAutoReply = useMemo(
+        () => getConversationKeyboardAutoReplyConfig(activeCharacterId || ''),
+        [activeCharacterId, keyboardAutoReplyRevision],
+    );
+    const autoReplyEnabled = inputPreferences.autoReply || conversationAutoReply.enabled;
     // Memoize ChatInputArea callbacks
-    const handleSendCallback = useCallback(() => handleSendText(), [char, input, replyTarget, inputPreferences]);
+    const handleSendCallback = useCallback(() => handleSendText(), [char, input, replyTarget, inputPreferences, autoReplyEnabled]);
     const handleCharSelectCallback = useCallback((id: string) => { setActiveCharacterId(id); setShowPanel('none'); }, []);
     const autoReply = useChatAutoReply({
-        enabled: inputPreferences.autoReply,
+        enabled: autoReplyEnabled,
         conversationId: activeCharacterId || null,
         active: activeApp === AppID.Chat && !!char,
         blocked: isInputFocused || !!input.trim() || showPanel !== 'none' || modalType !== 'none'
@@ -3408,6 +3421,7 @@ const Chat: React.FC = () => {
             || showProactiveModal || showActiveMsg2Modal || showThinkingChainModal
             || mcdAppOpen || luckinAppOpen || showForwardModal,
         generating: isTyping || instantChatPending || isProactiveComposing,
+        delayMs: conversationAutoReply.enabled ? conversationAutoReply.delayMs : CHAT_AUTO_REPLY_DELAY_MS,
         onGenerate: handleManualTrigger,
     });
     // 角色自定义聊天背景：字段值可能是 blobref 令牌（二进制在 IndexedDB），这里解析成能直接
@@ -3991,7 +4005,7 @@ const Chat: React.FC = () => {
                 );
             })()}
 
-            <div ref={scrollRef} onScroll={handleChatScroll} onClick={() => { if (inputPreferences.autoReply) setShowPanel('none'); }} className="flex-1 overflow-y-auto overflow-x-hidden pt-6 pb-6 no-scrollbar" style={{ backgroundImage: activeTheme.type === 'custom' && activeTheme.user.backgroundImage ? 'none' : undefined }}>
+            <div ref={scrollRef} onScroll={handleChatScroll} onClick={() => { if (autoReplyEnabled) setShowPanel('none'); }} className="flex-1 overflow-y-auto overflow-x-hidden pt-6 pb-6 no-scrollbar" style={{ backgroundImage: activeTheme.type === 'custom' && activeTheme.user.backgroundImage ? 'none' : undefined }}>
                 {windowedFocusMsgId !== null && (
                     <div className="sticky top-0 z-20 flex justify-center pb-2 pointer-events-none">
                         <button onClick={handleBackToCurrent} className="pointer-events-auto px-4 py-2 bg-primary text-white rounded-full text-xs font-bold shadow-lg active:scale-95 transition-transform flex items-center gap-1.5">
@@ -4270,7 +4284,7 @@ const Chat: React.FC = () => {
                     onGenerate={handleManualTrigger}
                     sendButtonGenerates={inputPreferences.sendButtonGenerates}
                     enterToSend={inputPreferences.enterToSend}
-                    autoReplyEnabled={inputPreferences.autoReply}
+                    autoReplyEnabled={autoReplyEnabled}
                     autoReplySeconds={autoReply.seconds}
                     onCancelAutoReply={autoReply.cancel}
                     onInputFocusChange={setIsInputFocused}

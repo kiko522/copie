@@ -149,4 +149,19 @@ describe('two-second automatic reply', () => {
         advance(1);
         expect(options.onGenerate).toHaveBeenCalledTimes(1);
     });
+
+    it('uses the per-conversation delay, including half seconds and zero', () => {
+        render({ delayMs: 2500 });
+        send();
+        expect(controls.seconds).toBe(3);
+        advance(2499);
+        expect(options.onGenerate).not.toHaveBeenCalled();
+        advance(1);
+        expect(options.onGenerate).toHaveBeenCalledTimes(1);
+
+        render({ delayMs: 0 });
+        send();
+        advance(0);
+        expect(options.onGenerate).toHaveBeenCalledTimes(2);
+    });
 });
