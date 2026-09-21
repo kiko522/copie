@@ -10,6 +10,8 @@
   encode zstd gzip
 
   header {
+    # 清除浏览器此前可能缓存的错误 HTTP/3 端口映射。
+    Alt-Svc "clear"
     Strict-Transport-Security "max-age=31536000"
     X-Content-Type-Options "nosniff"
     Referrer-Policy "no-referrer"
