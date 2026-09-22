@@ -175,7 +175,7 @@
 | 交换日记 `apps/JournalApp.tsx:483` | 一天一篇，晚点看完全成立；输出是 JSON + 贴纸结构，要新的回灌形态 |
 | 相册点评 `apps/Gallery.tsx:162` | 要传图片 base64 上云，吃请求体预算 |
 | 群聊导演 `apps/GroupChat.tsx:1248` | 用户在等，且带 MCP 工具循环 |
-| 小屋 `utils/worldHome/engine.ts:274`、彼方 `utils/vrWorld/runSession.ts:141` | 已经是全局定时器后台跑，离开概率 100%；但它们是带共享可变状态的多轮编排（每个角色一拍要读到前面角色刚写进 `world.threads` 的东西），外加十几张表读写和多处 `window.dispatchEvent` 驱动 UI。接之前先确认这个判断 |
+| 小屋 `utils/worldHome/engine.ts` | 已经是全局定时器后台跑，离开概率 100%；但它是带共享可变状态的多轮编排（每个角色一拍要读到前面角色刚写进 `world.threads` 的东西），外加多张表读写和多处 `window.dispatchEvent` 驱动 UI。接之前先确认这个判断 |
 
 ---
 

@@ -1,6 +1,6 @@
 # 捏人器 · PSD 整批导入 & 内置素材包
 
-> 覆盖 520 / 彼方共用的捏人器（`public/like520/character_creator.html`）、
+> 覆盖 520 / 手办柜共用的捏人器（`public/like520/character_creator.html`）、
 > 开发面板（`apps/CharCreatorDevApp.tsx`）、解析器（`utils/psdCreatorImport.ts`）、
 > Blob 存储桥（`utils/creatorPartsBlob.ts`）、内置素材包（`utils/builtinPartsPack.ts`）。
 

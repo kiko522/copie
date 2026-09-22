@@ -37,12 +37,6 @@ const WORKERS = [
     outPublic: 'public/sw-keep-alive.js',
     skipWorkerOut: true,
   },
-  // post-office 是纯后端（跨用户漂流信），不被前端静态 fetch，所以只产 worker.bundle.js
-  // 供粘进 CF 面板（选 ES Module 格式）或对照 wrangler deploy，不写 public/。
-  {
-    name: 'post-office',
-    skipPublicOut: true,
-  },
   // amsg = 主动消息 2.0 的单用户 worker（amsg-server/cloudflare, D1 + Cron Trigger）。
   // public/ 副本给设置页「复制 Worker 代码」按钮 fetch。amsg-server 2.6.0-next.2 起
   // 全 Web Crypto，免 nodejs_compat flag。

@@ -73,7 +73,7 @@ backup.zip
   `{ store, field, shape: array|singleton|composite, restore: clear-and-add|merge|put|singleton, emptyBehavior }`。
   **导出、manifest、导入共读这一张表**，杜绝「导出 switch 和 importFullData 各写一套、彼此漂移」。
   - 为什么不能「count:0 一律置 `[]`」：导入器各 store 行为不一致——clear-and-add 扔 `[]` 会清；merge（themes/
-    emojis/categories/stickers）扔 `[]` 啥也不清；singleton（userProfile/lifeSim/vrMusic/vrGuestbook）扔 `[]` 会写
+    emojis/categories/stickers）扔 `[]` 啥也不清；singleton（userProfile/lifeSim）扔 `[]` 会写
     **空壳**把好数据冲掉。所以空时清不清、传什么形状，**按 spec 来**。
   - **范围**：目标是 v2 还原**与 v1 行为完全一致、且不写空壳**；**不**顺手修 v1 本身「merge 不镜像」的老语义
     （那是独立课题，超本轮）。

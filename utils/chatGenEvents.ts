@@ -1,5 +1,5 @@
 /**
- * 聊天生成的全局广播事件（对标彼方的 vr-session-start/end）。
+ * 聊天生成的全局广播事件。
  *
  * 背景：Chat App 切走是真 unmount（PhoneShell 按 activeApp switch 渲染），但
  * useChatAI.triggerAI 的异步闭包会继续跑完并把回复落库（本地 fetch 路径），

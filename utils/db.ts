@@ -10,7 +10,7 @@ import {
     BankTransaction, SavingsGoal, BankFullState, DollhouseState, XhsStockImage, XhsActivityRecord, XhsOwnedPost, SongSheet, QuizSession, GuidebookSession,
     LifeSimState, HandbookEntry, Tracker, TrackerEntry, HotNewsSnapshot,
     LifeRecord, MedPlan, LifeRecordSettings, CharacterGroup,
-    VRWorldNovel, VRLibraryCategory, VRNovelAnnotation, CustomCreatorPart, VRMusicRoomState, VRGuestbookState, VRScript, VRStagedPlay, VRLetter,
+    CustomCreatorPart,
     WorldProfile, WorldEpisode, StoryTheaterEntry, StoryTheaterPreset, StoryTheaterMask
 } from '../types';
 import { exportLuckinLocal, importLuckinLocal } from './luckinMcpClient';
@@ -27,7 +27,8 @@ const DB_NAME = 'AetherOS_Data';
 // v69：见面·剧情条目与糯米机原生预设。正文继续复用 messages 表，避免再造会话存储。
 // v70：剧场面具箱（原创人物面具）；角色面具仍只存 characterId，不复制神经链接资料。
 // v71：角色小红书伪主页；发帖归属与可删除的自由活动日志分离。
-const DB_VERSION = 71;
+// v72：删除已下线虚拟世界留下的对象仓库和消息复合索引。
+const DB_VERSION = 72;
 
 const STORE_CHARACTERS = 'characters';
 const STORE_CHAR_GROUPS = 'character_groups'; // 角色分组定义（角色通过 groupId 指向；与群聊 groups 无关）
@@ -66,16 +67,7 @@ const STORE_HANDBOOK = 'handbook'; // 跨角色聚合手账，每天一条 entry
 const STORE_TRACKERS = 'trackers';                // 手账打卡 tracker 定义
 const STORE_TRACKER_ENTRIES = 'tracker_entries';  // tracker 每日打卡数据
 const STORE_HOTNEWS = 'hotnews_snapshots';        // 分时段热点快照（全角色共享，key=日期#时段）
-const STORE_VR_NOVELS = 'vr_novels';              // 虚拟世界「彼方」全局小说库（所有角色共享原文）
-const STORE_VR_ANNOTATIONS = 'vr_annotations';    // 虚拟世界小说批注（per-segment per-char，可互相吐槽）
 const STORE_CC_PARTS = 'cc_custom_parts';         // 捏脸系统自定义部件（开发模式追加，注入捏人器）
-const STORE_VR_MUSIC = 'vr_music';                // 听歌房共享状态（单例 nowPlaying + 循环队列）
-const STORE_VR_GUESTBOOK = 'vr_guestbook';        // 留言簿共享版聊墙（单例 messages）
-const STORE_VR_SCRIPTS = 'vr_scripts';            // 剧院·投稿剧本库（每份剧本一条）
-const STORE_VR_PLAYS = 'vr_plays';                // 剧院·历史舞台剧（每场演出一条）
-const STORE_VR_PRESETS = 'vr_presets';            // 剧院·用户自定义写作风格预设（key 为主键）
-const STORE_VR_LETTERS = 'vr_letters';            // 邮局信件（本地存档 + 待寄出/待回复队列）
-const STORE_VR_SETTINGS = 'vr_settings';          // 彼方设置单例：独立 API（id='api'）+ 调用记录（id='apilog'）
 const STORE_API_CALL_LOG = 'api_call_log';        // 全局 API 调用记录单例（id='log'，保留近 5 天）
 const STORE_WORLDS = 'worlds';                    // 家园·世界定义（成员/NPC/居住/关系/模式）
 const STORE_WORLD_EPISODES = 'world_episodes';    // 家园·演绎历史（每轮一条，index worldId）
@@ -245,16 +237,6 @@ export const openDB = (): Promise<IDBDatabase> => {
           }
       }
 
-      // v62: messages 加 [charId, type] 复合索引。彼方动态按 (charId, 'vr_card') 直取 vr_card，
-      // 成本只跟 vr_card 条数相关，跟总消息量无关——上万条聊天的用户也不必把整段历史 getAll
-      // 进内存再筛。没有 type 字段的老消息不会进此索引，正好不影响（我们只查 vr_card）。
-      try {
-          const msgStore = (event.target as IDBOpenDBRequest).transaction?.objectStore(STORE_MESSAGES);
-          if (msgStore && !msgStore.indexNames.contains('charId_type')) {
-              msgStore.createIndex('charId_type', ['charId', 'type'], { unique: false });
-          }
-      } catch (e) { console.log('charId_type index migration skipped', e); }
-
       createStore(STORE_EMOJIS, { keyPath: 'name' });
       createStore(STORE_EMOJI_CATEGORIES, { keyPath: 'id' });
 
@@ -298,26 +280,23 @@ export const openDB = (): Promise<IDBDatabase> => {
       createStore(STORE_WORLDBOOKS, { keyPath: 'id' }); 
       createStore(STORE_NOVELS, { keyPath: 'id' });
 
-      createStore(STORE_VR_NOVELS, { keyPath: 'id' });
-      if (!db.objectStoreNames.contains(STORE_VR_ANNOTATIONS)) {
-          const vrAnnStore = db.createObjectStore(STORE_VR_ANNOTATIONS, { keyPath: 'id' });
-          vrAnnStore.createIndex('novelId', 'novelId', { unique: false });
-      }
       if (!db.objectStoreNames.contains(STORE_CC_PARTS)) {
           const ccStore = db.createObjectStore(STORE_CC_PARTS, { keyPath: 'id' });
           ccStore.createIndex('categoryKey', 'categoryKey', { unique: false });
       }
-      createStore(STORE_VR_MUSIC, { keyPath: 'id' });
-      createStore(STORE_VR_GUESTBOOK, { keyPath: 'id' });
-      createStore(STORE_VR_SCRIPTS, { keyPath: 'id' });
-      createStore(STORE_VR_PLAYS, { keyPath: 'id' });
-      createStore(STORE_VR_PRESETS, { keyPath: 'key' });
-      if (!db.objectStoreNames.contains(STORE_VR_LETTERS)) {
-          const ltStore = db.createObjectStore(STORE_VR_LETTERS, { keyPath: 'id' });
-          ltStore.createIndex('box', 'box', { unique: false });
-      }
-      createStore(STORE_VR_SETTINGS, { keyPath: 'id' });
       createStore(STORE_API_CALL_LOG, { keyPath: 'id' });
+
+      // v72: remove stores and the message index left by the retired virtual-world feature.
+      for (const storeName of [
+          'vr_novels', 'vr_annotations', 'vr_music', 'vr_guestbook', 'vr_scripts',
+          'vr_plays', 'vr_presets', 'vr_letters', 'vr_settings',
+      ]) {
+          if (db.objectStoreNames.contains(storeName)) db.deleteObjectStore(storeName);
+      }
+      try {
+          const msgStore = (event.target as IDBOpenDBRequest).transaction?.objectStore(STORE_MESSAGES);
+          if (msgStore?.indexNames.contains('charId_type')) msgStore.deleteIndex('charId_type');
+      } catch (e) { console.log('retired message index cleanup skipped', e); }
 
       // v63: 家园（同世界观多角色大世界）
       createStore(STORE_WORLDS, { keyPath: 'id' });
@@ -689,48 +668,6 @@ export const DB = {
               cursor.continue();
           } else {
               resolve(collected.reverse());
-          }
-      };
-      cursorReq.onerror = () => reject(cursorReq.error);
-    });
-  },
-
-  // 彼方动态专用：捞某角色全部 vr_card，不受"最近 N 条窗口"、记忆宫殿高水位
-  // （mp_lastMsgId）、归档隐藏起点（char.hideBeforeMessageId）影响。
-  // 这些机制只管「LLM 上下文能否看到」；彼方动态是用户自己的浏览界面，
-  // 只要消息还在 IndexedDB 里就应当永远可见——哪怕它早被新聊天挤出聊天取数窗口、
-  // 或被归档标记为「对 AI 隐藏」。（清空聊天会真删消息，删掉就没了——那是预期行为。）
-  //
-  // 性能：走 [charId, type] 复合索引直取 vr_card，成本只跟该角色 vr_card 条数相关，
-  // 跟总消息量无关——上万条聊天的用户也不会把整段历史读进内存。
-  getVRCardsByCharId: async (charId: string): Promise<Message[]> => {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(STORE_MESSAGES, 'readonly');
-      const store = transaction.objectStore(STORE_MESSAGES);
-      if (store.indexNames.contains('charId_type')) {
-          const idx = store.index('charId_type');
-          const req = idx.getAll(IDBKeyRange.only([charId, 'vr_card']));
-          req.onsuccess = () => {
-              const results = (req.result || []).filter((m: Message) => !m.groupId && (m as any).metadata?.vrCard);
-              resolve(results);
-          };
-          req.onerror = () => reject(req.error);
-          return;
-      }
-      // 兜底：复合索引尚未建好的极少数情况（如升级事务还没跑完），用倒序游标扫，
-      // 凑够 80 条 vr_card 即停——避免 getAll 整段历史。
-      const index = store.index('charId');
-      const collected: Message[] = [];
-      const cursorReq = index.openCursor(IDBKeyRange.only(charId), 'prev');
-      cursorReq.onsuccess = () => {
-          const cursor = cursorReq.result;
-          if (cursor && collected.length < 80) {
-              const m = cursor.value as Message;
-              if (!m.groupId && m.type === 'vr_card' && (m as any).metadata?.vrCard) collected.push(m);
-              cursor.continue();
-          } else {
-              resolve(collected);
           }
       };
       cursorReq.onerror = () => reject(cursorReq.error);
@@ -2467,69 +2404,6 @@ export const DB = {
       transaction.objectStore(STORE_NOVELS).delete(id);
   },
 
-  getVRNovels: async (): Promise<VRWorldNovel[]> => {
-      const db = await openDB();
-      if (!db.objectStoreNames.contains(STORE_VR_NOVELS)) return [];
-      return new Promise((resolve, reject) => {
-          const transaction = db.transaction(STORE_VR_NOVELS, 'readonly');
-          const request = transaction.objectStore(STORE_VR_NOVELS).getAll();
-          request.onsuccess = () => resolve(request.result || []);
-          request.onerror = () => reject(request.error);
-      });
-  },
-
-  saveVRNovel: async (novel: VRWorldNovel): Promise<void> => {
-      const db = await openDB();
-      return new Promise((resolve, reject) => {
-          const transaction = db.transaction(STORE_VR_NOVELS, 'readwrite');
-          transaction.objectStore(STORE_VR_NOVELS).put(novel);
-          transaction.oncomplete = () => resolve();
-          transaction.onerror = transaction.onabort = () => reject(transaction.error || new Error('书籍保存失败'));
-      });
-  },
-
-  deleteVRNovel: async (id: string): Promise<void> => {
-      const db = await openDB();
-      // 删书时连带删掉这本书的全部批注
-      const annIds: string[] = await new Promise((resolve) => {
-          if (!db.objectStoreNames.contains(STORE_VR_ANNOTATIONS)) return resolve([]);
-          const tx = db.transaction(STORE_VR_ANNOTATIONS, 'readonly');
-          const idx = tx.objectStore(STORE_VR_ANNOTATIONS).index('novelId');
-          const req = idx.getAll(id);
-          req.onsuccess = () => resolve((req.result || []).map((a: VRNovelAnnotation) => a.id));
-          req.onerror = () => resolve([]);
-      });
-      const tx = db.transaction([STORE_VR_NOVELS, STORE_VR_ANNOTATIONS], 'readwrite');
-      tx.objectStore(STORE_VR_NOVELS).delete(id);
-      const annStore = tx.objectStore(STORE_VR_ANNOTATIONS);
-      for (const aid of annIds) annStore.delete(aid);
-  },
-
-  // --- VR World 小说批注 ---
-  getVRAnnotations: async (novelId?: string): Promise<VRNovelAnnotation[]> => {
-      const db = await openDB();
-      if (!db.objectStoreNames.contains(STORE_VR_ANNOTATIONS)) return [];
-      return new Promise((resolve, reject) => {
-          const transaction = db.transaction(STORE_VR_ANNOTATIONS, 'readonly');
-          const store = transaction.objectStore(STORE_VR_ANNOTATIONS);
-          const request = novelId ? store.index('novelId').getAll(novelId) : store.getAll();
-          request.onsuccess = () => resolve(request.result || []);
-          request.onerror = () => reject(request.error);
-      });
-  },
-
-  saveVRAnnotation: async (annotation: VRNovelAnnotation): Promise<void> => {
-      const db = await openDB();
-      const transaction = db.transaction(STORE_VR_ANNOTATIONS, 'readwrite');
-      transaction.objectStore(STORE_VR_ANNOTATIONS).put(annotation);
-  },
-
-  deleteVRAnnotation: async (id: string): Promise<void> => {
-      const db = await openDB();
-      const transaction = db.transaction(STORE_VR_ANNOTATIONS, 'readwrite');
-      transaction.objectStore(STORE_VR_ANNOTATIONS).delete(id);
-  },
-
   // --- 捏脸系统自定义部件 ---
   getCustomCreatorParts: async (): Promise<CustomCreatorPart[]> => {
       const db = await openDB();
@@ -2558,163 +2432,6 @@ export const DB = {
       const db = await openDB();
       const transaction = db.transaction(STORE_CC_PARTS, 'readwrite');
       transaction.objectStore(STORE_CC_PARTS).delete(id);
-  },
-
-  // --- 听歌房共享状态（单例 id='state'） ---
-  getVRMusicRoom: async (): Promise<VRMusicRoomState | null> => {
-      const db = await openDB();
-      if (!db.objectStoreNames.contains(STORE_VR_MUSIC)) return null;
-      return new Promise((resolve) => {
-          const transaction = db.transaction(STORE_VR_MUSIC, 'readonly');
-          const request = transaction.objectStore(STORE_VR_MUSIC).get('state');
-          request.onsuccess = () => resolve(request.result || null);
-          request.onerror = () => resolve(null);
-      });
-  },
-
-  saveVRMusicRoom: async (state: VRMusicRoomState): Promise<void> => {
-      const db = await openDB();
-      const transaction = db.transaction(STORE_VR_MUSIC, 'readwrite');
-      transaction.objectStore(STORE_VR_MUSIC).put({ ...state, id: 'state' });
-  },
-
-  // --- 留言簿共享状态（单例 id='board'） ---
-  getVRGuestbook: async (): Promise<VRGuestbookState | null> => {
-      const db = await openDB();
-      if (!db.objectStoreNames.contains(STORE_VR_GUESTBOOK)) return null;
-      return new Promise((resolve) => {
-          const transaction = db.transaction(STORE_VR_GUESTBOOK, 'readonly');
-          const request = transaction.objectStore(STORE_VR_GUESTBOOK).get('board');
-          request.onsuccess = () => resolve(request.result || null);
-          request.onerror = () => resolve(null);
-      });
-  },
-
-  saveVRGuestbook: async (state: VRGuestbookState): Promise<void> => {
-      const db = await openDB();
-      const transaction = db.transaction(STORE_VR_GUESTBOOK, 'readwrite');
-      // 不限存储条数：留言墙已支持每 50 条翻页，旧留言全部保留可翻看
-      const messages = state.messages || [];
-      transaction.objectStore(STORE_VR_GUESTBOOK).put({ ...state, id: 'board', messages });
-  },
-
-  /** Atomic append: concurrent visitors and system announcements cannot replace each other. */
-  appendVRGuestbookMessages: async (messages: VRGuestbookState['messages']): Promise<void> => {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_VR_GUESTBOOK, 'readwrite');
-      const store = tx.objectStore(STORE_VR_GUESTBOOK);
-      const request = store.get('board');
-      request.onsuccess = () => {
-        const board: VRGuestbookState = request.result || { id: 'board', messages: [], updatedAt: 0 };
-        const ids = new Set(board.messages.map(m => m.id));
-        const fresh = messages.filter(m => { if (ids.has(m.id)) return false; ids.add(m.id); return true; });
-        if (fresh.length) store.put({ ...board, messages: [...board.messages, ...fresh], updatedAt: Date.now() });
-      };
-      tx.oncomplete = () => { if (typeof window !== 'undefined') window.dispatchEvent(new Event('vr-guestbook-updated')); resolve(); };
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error || new Error('留言未能保存'));
-    });
-  },
-
-  clearVRGuestbook: async (): Promise<void> => {
-      const db = await openDB();
-      if (!db.objectStoreNames.contains(STORE_VR_GUESTBOOK)) return;
-      const transaction = db.transaction(STORE_VR_GUESTBOOK, 'readwrite');
-      transaction.objectStore(STORE_VR_GUESTBOOK).put({ id: 'board', messages: [], updatedAt: Date.now() });
-  },
-
-  // --- 剧院·投稿剧本库 ---
-  getVRScripts: async (): Promise<VRScript[]> => {
-      const db = await openDB();
-      if (!db.objectStoreNames.contains(STORE_VR_SCRIPTS)) return [];
-      return new Promise((resolve) => {
-          const request = db.transaction(STORE_VR_SCRIPTS, 'readonly').objectStore(STORE_VR_SCRIPTS).getAll();
-          request.onsuccess = () => resolve((request.result || []).sort((a: VRScript, b: VRScript) => b.createdAt - a.createdAt));
-          request.onerror = () => resolve([]);
-      });
-  },
-  saveVRScript: async (script: VRScript): Promise<void> => {
-      const db = await openDB();
-      db.transaction(STORE_VR_SCRIPTS, 'readwrite').objectStore(STORE_VR_SCRIPTS).put(script);
-  },
-  deleteVRScript: async (id: string): Promise<void> => {
-      const db = await openDB();
-      db.transaction(STORE_VR_SCRIPTS, 'readwrite').objectStore(STORE_VR_SCRIPTS).delete(id);
-  },
-
-  // --- 剧院·历史舞台剧 ---
-  getVRStagedPlays: async (): Promise<VRStagedPlay[]> => {
-      const db = await openDB();
-      if (!db.objectStoreNames.contains(STORE_VR_PLAYS)) return [];
-      return new Promise((resolve) => {
-          const request = db.transaction(STORE_VR_PLAYS, 'readonly').objectStore(STORE_VR_PLAYS).getAll();
-          request.onsuccess = () => resolve((request.result || []).sort((a: VRStagedPlay, b: VRStagedPlay) => b.createdAt - a.createdAt));
-          request.onerror = () => resolve([]);
-      });
-  },
-  saveVRStagedPlay: async (play: VRStagedPlay): Promise<void> => {
-      const db = await openDB();
-      db.transaction(STORE_VR_PLAYS, 'readwrite').objectStore(STORE_VR_PLAYS).put(play);
-  },
-  deleteVRStagedPlay: async (id: string): Promise<void> => {
-      const db = await openDB();
-      db.transaction(STORE_VR_PLAYS, 'readwrite').objectStore(STORE_VR_PLAYS).delete(id);
-  },
-
-  // --- 剧院·用户自定义写作风格预设 ---
-  getVRPresets: async (): Promise<any[]> => {
-      const db = await openDB();
-      if (!db.objectStoreNames.contains(STORE_VR_PRESETS)) return [];
-      return new Promise((resolve) => {
-          const request = db.transaction(STORE_VR_PRESETS, 'readonly').objectStore(STORE_VR_PRESETS).getAll();
-          request.onsuccess = () => resolve(request.result || []);
-          request.onerror = () => resolve([]);
-      });
-  },
-  saveVRPreset: async (preset: { key: string; name: string; prompt: string; blurb?: string }): Promise<void> => {
-      const db = await openDB();
-      db.transaction(STORE_VR_PRESETS, 'readwrite').objectStore(STORE_VR_PRESETS).put(preset);
-  },
-  deleteVRPreset: async (key: string): Promise<void> => {
-      const db = await openDB();
-      db.transaction(STORE_VR_PRESETS, 'readwrite').objectStore(STORE_VR_PRESETS).delete(key);
-  },
-
-  // --- 邮局信件 ---
-  getVRLetters: async (): Promise<VRLetter[]> => {
-      const db = await openDB();
-      if (!db.objectStoreNames.contains(STORE_VR_LETTERS)) return [];
-      return new Promise((resolve, reject) => {
-          const transaction = db.transaction(STORE_VR_LETTERS, 'readonly');
-          const request = transaction.objectStore(STORE_VR_LETTERS).getAll();
-          request.onsuccess = () => resolve((request.result || []).sort((a: VRLetter, b: VRLetter) => b.createdAt - a.createdAt));
-          request.onerror = () => reject(request.error);
-      });
-  },
-
-  saveVRLetter: async (letter: VRLetter): Promise<void> => {
-      const db = await openDB();
-      const transaction = db.transaction(STORE_VR_LETTERS, 'readwrite');
-      transaction.objectStore(STORE_VR_LETTERS).put(letter);
-  },
-
-  saveVRLetters: async (letters: VRLetter[]): Promise<void> => {
-      if (letters.length === 0) return;
-      const db = await openDB();
-      const transaction = db.transaction(STORE_VR_LETTERS, 'readwrite');
-      const store = transaction.objectStore(STORE_VR_LETTERS);
-      for (const l of letters) store.put(l);
-      return new Promise((resolve, reject) => {
-          transaction.oncomplete = () => resolve();
-          transaction.onerror = () => reject(transaction.error);
-      });
-  },
-
-  deleteVRLetter: async (id: string): Promise<void> => {
-      const db = await openDB();
-      const transaction = db.transaction(STORE_VR_LETTERS, 'readwrite');
-      transaction.objectStore(STORE_VR_LETTERS).delete(id);
   },
 
   // --- 家园（世界定义 + 演绎历史）---
@@ -2857,61 +2574,6 @@ export const DB = {
       });
   },
 
-  // --- 彼方独立 API + 调用记录（vr_settings 单例 store）---
-  getVRApiConfig: async (): Promise<any | null> => {
-      const db = await openDB();
-      if (!db.objectStoreNames.contains(STORE_VR_SETTINGS)) return null;
-      return new Promise((resolve) => {
-          const tx = db.transaction(STORE_VR_SETTINGS, 'readonly');
-          const req = tx.objectStore(STORE_VR_SETTINGS).get('api');
-          req.onsuccess = () => resolve(req.result?.config ?? null);
-          req.onerror = () => resolve(null);
-      });
-  },
-
-  saveVRApiConfig: async (config: any | null): Promise<void> => {
-      const db = await openDB();
-      const tx = db.transaction(STORE_VR_SETTINGS, 'readwrite');
-      tx.objectStore(STORE_VR_SETTINGS).put({ id: 'api', config: config ?? null });
-  },
-
-  getVRApiLog: async (): Promise<any[]> => {
-      const db = await openDB();
-      if (!db.objectStoreNames.contains(STORE_VR_SETTINGS)) return [];
-      return new Promise((resolve) => {
-          const tx = db.transaction(STORE_VR_SETTINGS, 'readonly');
-          const req = tx.objectStore(STORE_VR_SETTINGS).get('apilog');
-          req.onsuccess = () => resolve(req.result?.entries ?? []);
-          req.onerror = () => resolve([]);
-      });
-  },
-
-  setVRApiLog: async (entries: any[]): Promise<void> => {
-      const db = await openDB();
-      const tx = db.transaction(STORE_VR_SETTINGS, 'readwrite');
-      tx.objectStore(STORE_VR_SETTINGS).put({ id: 'apilog', entries: (entries || []).slice(0, 120) });
-  },
-
-  appendVRApiLog: async (entry: any): Promise<void> => {
-      const db = await openDB();
-      const read = (): Promise<any[]> => new Promise((resolve) => {
-          const tx = db.transaction(STORE_VR_SETTINGS, 'readonly');
-          const req = tx.objectStore(STORE_VR_SETTINGS).get('apilog');
-          req.onsuccess = () => resolve(req.result?.entries ?? []);
-          req.onerror = () => resolve([]);
-      });
-      const cur = await read();
-      cur.unshift(entry);
-      const tx = db.transaction(STORE_VR_SETTINGS, 'readwrite');
-      tx.objectStore(STORE_VR_SETTINGS).put({ id: 'apilog', entries: cur.slice(0, 120) });
-  },
-
-  clearVRApiLog: async (): Promise<void> => {
-      const db = await openDB();
-      const tx = db.transaction(STORE_VR_SETTINGS, 'readwrite');
-      tx.objectStore(STORE_VR_SETTINGS).put({ id: 'apilog', entries: [] });
-  },
-
   // --- 全局 API 调用记录（api_call_log 单例 store，id='log'）---
   // 只保留近 5 天的记录，超期在写入时丢弃。读出时再过滤一次兜底。
   getApiCallLog: async (): Promise<any[]> => {
@@ -3034,14 +2696,6 @@ export const DB = {
           tx.onerror = () => reject(tx.error || new Error('clearApiRequestCapture transaction failed'));
           tx.onabort = () => reject(tx.error || new Error('clearApiRequestCapture transaction aborted'));
       });
-  },
-
-  // 导入备份用：直接写回一条 vr_settings 原始记录（{id, ...}）。
-  saveVRSettingRecord: async (record: any): Promise<void> => {
-      if (!record || !record.id) return;
-      const db = await openDB();
-      const tx = db.transaction(STORE_VR_SETTINGS, 'readwrite');
-      tx.objectStore(STORE_VR_SETTINGS).put(record);
   },
 
   // --- BANK / PET APP LOGIC ---
@@ -3323,7 +2977,7 @@ export const DB = {
           });
       };
 
-      const [characters, characterGroups, messages, themes, emojis, emojiCategories, assets, galleryImages, userProfiles, diaries, tasks, anniversaries, roomTodos, roomNotes, groups, journalStickers, socialPosts, courses, games, worldbooks, storyTheaters, storyTheaterPresets, storyTheaterMasks, novels, bankTx, bankData, xhsActivities, xhsOwnedPosts, xhsStockImages, songs, quizzes, guidebookSessions, scheduledMessages, lifeSimStates, handbooks, trackers, trackerEntries, hotNewsSnapshots, vrNovels, vrAnnotations, customCreatorParts, vrMusic, vrGuestbook, vrScripts, vrStagedPlays, vrPresets, vrLetters, vrSettings, worlds, worldEpisodes, lifeRecords, medPlans, lifeRecordSettings] = await Promise.all([
+      const [characters, characterGroups, messages, themes, emojis, emojiCategories, assets, galleryImages, userProfiles, diaries, tasks, anniversaries, roomTodos, roomNotes, groups, journalStickers, socialPosts, courses, games, worldbooks, storyTheaters, storyTheaterPresets, storyTheaterMasks, novels, bankTx, bankData, xhsActivities, xhsOwnedPosts, xhsStockImages, songs, quizzes, guidebookSessions, scheduledMessages, lifeSimStates, handbooks, trackers, trackerEntries, hotNewsSnapshots, customCreatorParts, worlds, worldEpisodes, lifeRecords, medPlans, lifeRecordSettings] = await Promise.all([
           getAllFromStore(STORE_CHARACTERS),
           getAllFromStore(STORE_CHAR_GROUPS),
           getAllFromStore(STORE_MESSAGES),
@@ -3362,16 +3016,7 @@ export const DB = {
           getAllFromStore(STORE_TRACKERS),
           getAllFromStore(STORE_TRACKER_ENTRIES),
           getAllFromStore(STORE_HOTNEWS),
-          getAllFromStore(STORE_VR_NOVELS),
-          getAllFromStore(STORE_VR_ANNOTATIONS),
           getAllFromStore(STORE_CC_PARTS),
-          getAllFromStore(STORE_VR_MUSIC),
-          getAllFromStore(STORE_VR_GUESTBOOK),
-          getAllFromStore(STORE_VR_SCRIPTS),
-          getAllFromStore(STORE_VR_PLAYS),
-          getAllFromStore(STORE_VR_PRESETS),
-          getAllFromStore(STORE_VR_LETTERS),
-          getAllFromStore(STORE_VR_SETTINGS),
           getAllFromStore(STORE_WORLDS),
           getAllFromStore(STORE_WORLD_EPISODES),
           getAllFromStore(STORE_LIFE_RECORDS),
@@ -3408,16 +3053,7 @@ export const DB = {
           medPlans,
           lifeRecordSettings,
           hotNewsSnapshots,
-          vrNovels,
-          vrAnnotations,
           customCreatorParts,
-          vrMusicRoom: vrMusic && vrMusic.length ? vrMusic[0] : undefined,
-          vrGuestbook: vrGuestbook && vrGuestbook.length ? vrGuestbook[0] : undefined,
-          vrScripts,
-          vrStagedPlays,
-          vrPresets,
-          vrLetters,
-          vrSettings,
           worlds,
           worldEpisodes,
           worldHomeLocal: exportWorldHomeLocal(), // 家园本机配置：全局 API + 文风收藏（存 localStorage）
@@ -3469,7 +3105,7 @@ export const DB = {
           STORE_MED_PLANS,
           STORE_LIFE_SETTINGS,
           STORE_HOTNEWS,
-          STORE_VR_NOVELS, STORE_VR_ANNOTATIONS, STORE_CC_PARTS, STORE_VR_MUSIC, STORE_VR_GUESTBOOK, STORE_VR_SCRIPTS, STORE_VR_PLAYS, STORE_VR_PRESETS, STORE_VR_LETTERS, STORE_VR_SETTINGS,
+          STORE_CC_PARTS,
           STORE_WORLDS, STORE_WORLD_EPISODES,
           'memory_nodes', 'memory_vectors', 'memory_links', 'topic_boxes', 'anticipations', 'event_boxes',
           'room_plates', 'digest_reports',
@@ -3557,16 +3193,7 @@ export const DB = {
           data.medPlans !== undefined,
           data.lifeRecordSettings !== undefined,
           data.hotNewsSnapshots !== undefined,
-          data.vrNovels !== undefined,
-          data.vrAnnotations !== undefined,
           data.customCreatorParts !== undefined,
-          data.vrMusicRoom !== undefined,
-          data.vrGuestbook !== undefined,
-          data.vrScripts !== undefined,
-          data.vrStagedPlays !== undefined,
-          data.vrPresets !== undefined,
-          data.vrLetters !== undefined,
-          (data as any).vrPostOffice !== undefined,
           data.worlds !== undefined,
           data.worldEpisodes !== undefined,
           (data as any).worldHomeLocal !== undefined,
@@ -3820,50 +3447,12 @@ export const DB = {
           await clearAndAdd(STORE_NOVELS, data.novels, '小说', false);
           data.novels = undefined as any;
       }, data.novels?.length || 0);
-      await runSection('彼方小说库', data.vrNovels !== undefined, async () => {
-          await clearAndAdd(STORE_VR_NOVELS, data.vrNovels, '彼方小说库', false);
-          data.vrNovels = undefined as any;
-      }, data.vrNovels?.length || 0);
-      await runSection('彼方批注', data.vrAnnotations !== undefined, async () => {
-          await clearAndAdd(STORE_VR_ANNOTATIONS, data.vrAnnotations, '彼方批注', false);
-          data.vrAnnotations = undefined as any;
-      }, data.vrAnnotations?.length || 0);
       await runSection('捏脸自定义部件', data.customCreatorParts !== undefined, async () => {
           // restoreAssets=true：部件 src/shadowSrc 是 data:image，media/full 导出时被抽进 zip，
           // 导入必须经 beforeWrite 把 assets/*.png 路径还原回 base64，否则部件图裂成死链。
           await clearAndAdd(STORE_CC_PARTS, data.customCreatorParts, '捏脸自定义部件', true);
           data.customCreatorParts = undefined as any;
       }, data.customCreatorParts?.length || 0);
-      await runSection('听歌房', data.vrMusicRoom !== undefined, async () => {
-          if (hasStore(STORE_VR_MUSIC) && data.vrMusicRoom) await DB.saveVRMusicRoom(data.vrMusicRoom);
-          data.vrMusicRoom = undefined as any;
-      }, 1);
-      await runSection('留言簿', data.vrGuestbook !== undefined, async () => {
-          if (hasStore(STORE_VR_GUESTBOOK) && data.vrGuestbook) await DB.saveVRGuestbook(data.vrGuestbook);
-          data.vrGuestbook = undefined as any;
-      }, 1);
-      await runSection('剧院剧本', data.vrScripts !== undefined, async () => {
-          if (hasStore(STORE_VR_SCRIPTS) && Array.isArray(data.vrScripts)) for (const s of data.vrScripts) await DB.saveVRScript(s);
-          data.vrScripts = undefined as any;
-      }, data.vrScripts?.length || 0);
-      await runSection('历史舞台剧', data.vrStagedPlays !== undefined, async () => {
-          if (hasStore(STORE_VR_PLAYS) && Array.isArray(data.vrStagedPlays)) for (const p of data.vrStagedPlays) await DB.saveVRStagedPlay(p);
-          data.vrStagedPlays = undefined as any;
-      }, data.vrStagedPlays?.length || 0);
-      await runSection('剧院预设', (data as any).vrPresets !== undefined, async () => {
-          if (hasStore(STORE_VR_PRESETS) && Array.isArray((data as any).vrPresets)) for (const p of (data as any).vrPresets) await DB.saveVRPreset(p);
-          (data as any).vrPresets = undefined as any;
-      }, (data as any).vrPresets?.length || 0);
-      await runSection('邮局信件', data.vrLetters !== undefined, async () => {
-          await clearAndAdd(STORE_VR_LETTERS, data.vrLetters, '邮局信件', false);
-          data.vrLetters = undefined as any;
-      }, data.vrLetters?.length || 0);
-      await runSection('彼方设置', data.vrSettings !== undefined, async () => {
-          if (hasStore(STORE_VR_SETTINGS) && Array.isArray(data.vrSettings)) {
-              for (const rec of data.vrSettings) await DB.saveVRSettingRecord(rec);
-          }
-          data.vrSettings = undefined as any;
-      }, data.vrSettings?.length || 0);
       await runSection('家园世界', data.worlds !== undefined, async () => {
           await clearAndAdd(STORE_WORLDS, data.worlds, '家园世界', false);
           data.worlds = undefined as any;

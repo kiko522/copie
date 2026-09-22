@@ -1098,7 +1098,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   // 收敛全在 utils/analyticsSnapshot.ts 里做，这里只负责把 OSContext 手上那几份
   // state 递过去。地址、密钥、token、账号名一个字都不会进上报。
   // 自己拦一道「只跑一次」：上报侧本来就有 once 门，但取数要读 IndexedDB
-  // （彼方独立线路、主动消息 2.0 全局配置、协同库 count），不让它随 state 变更白跑。
+  // （主动消息 2.0 全局配置、协同库 count），不让它随 state 变更白跑。
   const featuresReportedRef = useRef(false);
   useEffect(() => {
       if (!isDataLoaded || featuresReportedRef.current) return;
@@ -1116,14 +1116,6 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           }));
       })();
   }, [isDataLoaded, realtimeConfig, cloudBackupConfig, memoryPalaceConfig, remoteVectorConfig, apiConfig, apiPresets, characters]);
-
-  useEffect(() => {
-      if (!isDataLoaded) return;
-      // 彼方下线后清掉不随 IndexedDB 迁移的本地调度表，防止旧安装残留后台计时状态。
-      localStorage.removeItem('vr_schedules');
-      localStorage.removeItem('vr_last_fire');
-      localStorage.removeItem('vr_fail_streak');
-  }, [isDataLoaded]);
 
   // --- Global Error Interception ---
   useEffect(() => {
@@ -2773,7 +2765,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           }));
       };
 
-      // Push / 彼方 / 家园等 React 外入口完成全自动记忆双写后，只把增量搬回内存。
+      // Push / 家园等 React 外入口完成全自动记忆双写后，只把增量搬回内存。
       // 再基于当前 state 保存一次，堵住后台 DB 写入和前台角色更新同时发生时的反向覆盖。
       const memoryAutoArchiveSyncHandler = (e: Event) => {
           const detail = ((e as CustomEvent).detail || {}) as MemoryAutoArchiveSyncDetail;
@@ -3849,11 +3841,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
               'room_plates', 'digest_reports',
               'daily_schedule', 'memory_batches',
               'pixel_home_assets', 'pixel_home_layouts',
-              // 「彼方」虚拟世界各房间 store —— 早期导出清单漏了，导致备份不含房间数据
-              // 剧院的 vr_scripts(投稿剧本) / vr_plays(角色演过的话剧) / vr_presets(写作风格预设)
-              // 之前也漏在这份清单外，导出后这三类剧院数据全丢（导入端其实早已支持恢复）
-              'vr_novels', 'vr_annotations', 'cc_custom_parts', 'vr_music', 'vr_guestbook', 'vr_letters', 'vr_settings',
-              'vr_scripts', 'vr_plays', 'vr_presets',
+              'cc_custom_parts',
               // 家园（同世界观多角色大世界）——世界定义 + 演绎历史。导入端早已支持恢复
               // （worldHomeLocal 本机配置也已随导出带走），但这两个 store 之前漏在清单外，
               // 导致导出的备份不含家园数据。
@@ -4226,14 +4214,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
               memory_batches: 'memoryBatches',
               pixel_home_assets: 'pixelHomeAssets',
               pixel_home_layouts: 'pixelHomeLayouts',
-              vr_novels: 'vrNovels',
-              vr_annotations: 'vrAnnotations',
               cc_custom_parts: 'customCreatorParts',
-              vr_letters: 'vrLetters',
-              vr_settings: 'vrSettings',
-              vr_scripts: 'vrScripts',
-              vr_plays: 'vrStagedPlays',
-              vr_presets: 'vrPresets',
               worlds: 'worlds',
               world_episodes: 'worldEpisodes',
               life_records: 'lifeRecords',
@@ -4479,18 +4460,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
                   case 'memory_batches': backupData.memoryBatches = processedData; break;
                   case 'pixel_home_assets': backupData.pixelHomeAssets = processedData; break;
                   case 'pixel_home_layouts': backupData.pixelHomeLayouts = processedData; break;
-                  // 「彼方」虚拟世界 —— 键名须与 importFullData 读取的字段对齐
-                  case 'vr_novels': backupData.vrNovels = processedData; break;
-                  case 'vr_annotations': backupData.vrAnnotations = processedData; break;
                   case 'cc_custom_parts': backupData.customCreatorParts = processedData; break;
-                  case 'vr_letters': backupData.vrLetters = processedData; break;
-                  case 'vr_settings': backupData.vrSettings = processedData; break;
-                  case 'vr_scripts': backupData.vrScripts = processedData; break;
-                  case 'vr_plays': backupData.vrStagedPlays = processedData; break;        // 角色演过的话剧
-                  case 'vr_presets': backupData.vrPresets = processedData; break;
-                  // 单例 store：导入端期望单个对象（取首条），非数组
-                  case 'vr_music': backupData.vrMusicRoom = Array.isArray(processedData) ? (processedData[0] || undefined) : (processedData || undefined); break;
-                  case 'vr_guestbook': backupData.vrGuestbook = Array.isArray(processedData) ? (processedData[0] || undefined) : (processedData || undefined); break;
                   // 家园 —— 键名须与 importFullData 读取的字段（data.worlds / data.worldEpisodes）对齐
                   case 'worlds': backupData.worlds = processedData; break;
                   case 'world_episodes': backupData.worldEpisodes = processedData; break;

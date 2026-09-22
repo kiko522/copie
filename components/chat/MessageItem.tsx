@@ -18,7 +18,6 @@ import McdCard from './McdCard';
 import HtmlCard from './HtmlCard';
 import LuckinCard from './LuckinCard';
 import LuckinCheckoutCard from './LuckinCheckoutCard';
-import QixiEventCardView from './QixiEventCard';
 
 // 思考链卡片支持的 12 种风格预设 — 同时被 MessageItem 与 ThinkingChainSettingsModal 复用
 export type ThinkingChainStyleId = 'echo' | 'whisper' | 'minimal' | 'ink' | 'neon' | 'terminal' | 'stellar' | 'tama' | 'pixel' | 'muji' | 'ins' | 'custom';
@@ -2571,7 +2570,7 @@ const MessageItem = React.memo(({
                     className="relative rounded-2xl overflow-hidden border border-violet-200/70 shadow-[0_6px_20px_rgba(150,130,200,0.22)]"
                     style={{ background: 'linear-gradient(160deg,#fbf7ff 0%,#f1ebfa 55%,#eae3f6 100%)' }}
                 >
-                    {/* 顶部淡紫光晕 + 月亮 + 星点（浅色系，和彼方的深色拉开差异） */}
+                    {/* 顶部淡紫光晕 + 月亮 + 星点 */}
                     <div className="absolute -top-6 -right-4 w-24 h-24 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle,rgba(214,196,244,.55),transparent 70%)' }} />
                     <div className="absolute top-2.5 right-3.5 w-5 h-5 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle at 38% 35%,#ffffff,#d9cdf0 72%)', boxShadow: '0 0 10px 2px rgba(200,180,245,.5)' }} />
                     <div className="absolute inset-0 pointer-events-none opacity-60" style={{ backgroundImage: 'radial-gradient(1px 1px at 20% 22%,#c9b8ec,transparent),radial-gradient(1px 1px at 60% 16%,#e7c9f0,transparent),radial-gradient(1px 1px at 40% 34%,#bcd0f0,transparent)' }} />
@@ -2784,10 +2783,6 @@ const MessageItem = React.memo(({
     if (m.type === 'score_card') {
         let scoreData: any = null;
         try { scoreData = m.metadata?.scoreCard || JSON.parse(m.content); } catch {}
-
-        if (scoreData?.type === 'qixi_event_card') {
-            return commonLayout(<QixiEventCardView card={scoreData} timestamp={m.timestamp} interactionProps={interactionProps} />);
-        }
 
         // Guidebook End Card
         if (scoreData?.type === 'guidebook_card') {

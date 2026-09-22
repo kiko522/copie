@@ -62,7 +62,6 @@ export const CARD_STRIPPED_FIELDS = [
   'phoneState',
   'dreamLogs',
   'specialMomentRecords',
-  'vrState',
   'chibiStudio',
 ] as const;
 

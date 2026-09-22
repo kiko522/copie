@@ -457,7 +457,7 @@ const MobileGameHome: React.FC = () => {
                         <span className="text-[12px]" style={{ color: PAL.pink }}>✦</span>
                     </div>
 
-                    {/* 角色：有彼方 chibi → 小贴纸；否则头像电影感融合（参考日常表/攻略本）*/}
+                    {/* 角色：有 chibi → 小贴纸；否则头像电影感融合（参考日常表/攻略本）*/}
                     {chibi?.img && (chibi.isFallback ? (
                         <div className="absolute right-0 top-0 bottom-0 w-[54%] pointer-events-none"
                             style={{
@@ -471,7 +471,7 @@ const MobileGameHome: React.FC = () => {
                         <TokenImg value={chibi.img} alt="" loading="lazy"
                             className="absolute right-0 bottom-0 object-contain object-bottom pointer-events-none"
                             style={{
-                                height: '64%', // 相对时钟卡高度，避免吃彼方里按 VR 调的绝对 scale 而巨大
+                                height: '64%', // 相对时钟卡高度，避免素材按绝对 scale 显得过大
                                 transform: `scaleX(${chibi.flip ? -1 : 1})`,
                                 filter: 'drop-shadow(0 5px 10px rgba(120,90,170,0.45))',
                             }} />

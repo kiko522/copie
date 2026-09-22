@@ -102,7 +102,7 @@ export async function runBlobGc(opts?: { minAgeMs?: number }) {
 
 | 面 | 内容 | 吐法 |
 |---|---|---|
-| `characters` 表 | avatar / sprites / dateSkinSets / roomConfig / vrState.chibi / companionAvatar（含 imageWardrobe，令牌兼任条目 id 与 imageRef 两个值位）/ videoCallBackground / companionBackground / studio.like520 | 游标逐行 `JSON.stringify(row)` |
+| `characters` 表 | avatar / sprites / dateSkinSets / roomConfig / companionAvatar（含 imageWardrobe，令牌兼任条目 id 与 imageRef 两个值位）/ videoCallBackground / companionBackground / studio.like520 | 游标逐行 `JSON.stringify(row)` |
 | `messages` 表 | `metadata.cameraSnapshotRef` | 游标逐行（表大，不 getAll 全量占内存） |
 | `cc_custom_parts` 表 | src / shadowSrc | 游标逐行 |
 | `songs` 表 | coverImage | 游标逐行 |

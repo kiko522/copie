@@ -1,9 +1,9 @@
 /**
  * 「家园」离线 tick 调度器。
  *
- * 与 VRScheduler 的"固定间隔"不同，家园按**每日时段**触发：
+ * 家园按**每日时段**触发：
  * 凌晨（02:00 后）/ 早（09:00 后）/ 午（14:00 后）/ 晚（21:00 后），每个时段当天最多一轮。
- * 错过时段后回到前台会补火（和 VRScheduler 一样的 visibilitychange / focus /
+ * 错过时段后回到前台会补火（通过 visibilitychange / focus /
  * 主线程轮询三重兜底），所以"早上没开 App，中午打开"会把早上那轮补上——
  * 这正是"我不看的时候世界慢慢走，我一看就加速"的体验。
  *
@@ -11,7 +11,7 @@
  * 会在本机凌晨触发，和世界钟（realNowSeg）对不上。日历日也一样按世界时区算，否则跨日的
  * fired 记录会在错误的时刻清零、当天配额被多烧一轮。
  *
- * 存储（localStorage，独立键，不与 vr_schedules / proactive 挤占）：
+ * 存储（localStorage，独立键，不与 proactive 挤占）：
  *   - world_tick_slots: { [worldId]: { slots: slot[]; tz?: string } }（旧格式 slot[] 读时自动兼容）
  *   - world_tick_fired: { [worldId]: { date: 'YYYY-MM-DD', fired: slot[] } }
  */
@@ -156,7 +156,7 @@ export const WorldScheduler = {
     /**
      * 以世界配置为准重建调度表。
      * 调度表存 localStorage 不随备份迁移，世界配置（offlineTickSlots）存 IndexedDB
-     * 随备份走——和 VRScheduler.reconcile 同样的对账逻辑。
+     * 随备份走，并在启动时完成对账。
      * 注意：新加入调度的世界，"今天已经过去的时段"视为已耗尽，不补火——
      * 避免用户刚配置完就瞬间连烧几轮 LLM 调用。
      */

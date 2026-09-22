@@ -3,7 +3,6 @@ import { selectCharacterContextMessages } from './chatContextRange';
 import { CharacterProfile, UserProfile, Message, Emoji, EmojiCategory, GroupProfile, RealtimeConfig, DailySchedule } from '../types';
 import { ContextBuilder } from './context';
 import { DB } from './db';
-import { formatQixiEventCardForContext, tryParseQixiEventChatCard } from './qixiChatCard';
 import { normalizeMessageContent, stickerNameFromUrl, theaterWhenPhrase } from './messageFormat';
 import { formatTransferRecord } from './transferFormat';
 import { computeCurrentListening, getCurrentSlot } from './charMusicSchedule';
@@ -140,7 +139,6 @@ export const detectChatModeTransition = (messages: readonly Message[]): ChatMode
  * | 【真实世界感知系统】（今日节日 / 天气 / 热搜） | 全是打包那天那一刻的，跨天说错节日、大晴天叫人带伞、同一批旧闻反复当「最近真实发生」 | worker 填 AMSG_SLOT_REALTIME_WORLD（到点自己去拉一次） |
  * | 日程当前时段 + 此刻在听的歌 | 3am 触发会说「我在健身房呢」 | worker 填 AMSG_SLOT_SCENE（随包带整天作息表现算） |
  * | 「你刚刚和对方结束了一通电话 / 见面」 | 打包时刚挂电话，到点可能是第二天凌晨 | 不补 |
- * | 「用户此刻也在《彼方》里」 | 说的是用户当下挂在哪个房间，人下线几小时后角色还在说「看你小人挂在听歌房」 | 不补（worker 够不着用户此刻的彼方状态） |
  * | 群聊背景的「约 X 分钟前」 | 打包时的「刚才」到点变成昨天 | 保留绝对时间戳 |
  * | 生活记录的代记工具说明 | 后台没有用户新说的话，记下来的一定是重复或臆造 | 不补（摘要数据仍保留） |
  * | `[schedule_message]` 教学 | 排的是浏览器里的本地定时消息，App 关着没人派发 | worker 追加自己的排程工具说明 |
@@ -153,7 +151,7 @@ export interface PromptBuildOptions {
      * `timelyByWorker` = 这份 prompt 会交给 amsg worker 在 fire 时刻补时效段
      * （即时对话路径）。与 forFirePack 的区别：只裁「worker 那边有对应槽位」的
      * 时效块——当前时间块、【真实世界感知系统】（节日/天气/热搜）；本地私有的
-     * 易变段（召回/buff/音乐/日程/群聊/彼方）照常保留，它们在发送时刻是新鲜的，
+     * 易变段（召回/buff/音乐/日程/群聊）照常保留，它们在发送时刻是新鲜的，
      * 而 worker 拿不到。不裁的话，模型会在一份 prompt 里看到两个钟、两份互不
      * 重叠的热搜（前端快照版 + worker 现拉版），且两段都自称「来自真实世界」。
      * `[schedule_message]` 教学是否保留还要看角色的 2.0 开关，见下方
@@ -349,7 +347,7 @@ export const ChatPrompts = {
         //
         // fire_pack 整块不要：这一段里从时间、节日、天气到热搜全是打包那一刻的读数，
         // 而且抬头写着「⚠️ 以下信息来自真实世界」，措辞比任何免责声明都硬——跨时段触发时
-        // 角色会照着一份过期的世界说话（大晴天叫人带伞、第二天还在祝七夕快乐、
+        // 角色会照着一份过期的世界说话（大晴天叫人带伞、第二天还在祝过期节日、
         // 同一批旧闻当成「最近真实发生」说三遍）。
         //
         // 主动消息不是因此就没有这一段：模板里留着 AMSG_SLOT_REALTIME_WORLD，worker 到点
@@ -1358,10 +1356,7 @@ ${userProfile.name} 给你反馈时，别当成约束，当成信任——ta 在
                 else if ((m.type as string) === 'score_card') {
                     try {
                         const card = m.metadata?.scoreCard || JSON.parse(m.content);
-                        const qixiCard = tryParseQixiEventChatCard(card);
-                        if (qixiCard) {
-                            content = `${timeStr} ${formatQixiEventCardForContext(qixiCard, 'char')}`;
-                        } else if (card?.type === 'diary_card') {
+                        if (card?.type === 'diary_card') {
                             const uName = card.userName || userProfile?.name || '用户';
                             const userText = (card.userText || '').trim();
                             const charText = (card.charText || '').trim();

@@ -4,7 +4,7 @@
  * 动机：私聊 prompt 的群聊背景注入（chatPrompts.buildSystemPromptParts）需要把
  * 群消息的发言人标成真实角色名，但它位于 utils 层、拿不到 OSContext 的 characters
  * state，而给 buildChatRequestPayload 的所有调用方（useChatAI / 主动消息 /
- * worldHome / 彼方 …）逐一穿参代价太高。OSProvider 在 characters 变化时把
+ * worldHome 等）逐一穿参代价太高。OSProvider 在 characters 变化时把
  * 名字表写到这里，utils 层按需读取。
  */
 

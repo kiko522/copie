@@ -317,7 +317,7 @@ export const AMSG_SLOT_SCENE = '{{AMSG_SCENE}}';
  * 这一段前台每轮都有（见 realtimeWorldCore 的 renderRealtimeWorldBlock），到点生成
  * 也该有，但绝不能跟着模板一起烤进来——它抬头就写着「以下信息来自真实世界」，
  * 措辞比任何免责声明都硬，照着打包那一刻的读数说话就是大晴天叫人带伞、第二天还在
- * 祝七夕快乐。所以留成槽位，worker 到点现拉现填；拉不到就填空串，这一段整个消失。
+ * 祝过期节日快乐。所以留成槽位，worker 到点现拉现填；拉不到就填空串，这一段整个消失。
  *
  * 注意这段里不带「当前时间」那一行：时间由 AMSG_SLOT_CURRENT_TIME 给，
  * 两处都出的话一份 prompt 里就有了两个钟。

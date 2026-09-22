@@ -326,7 +326,7 @@ async function readBodyWithStreaming(
         if (sawTerminalEvent) {
             // A few OpenAI-compatible Claude proxies send [DONE]/finish_reason but
             // keep the HTTP socket alive. The completion is already whole; waiting
-            // for reader.done would leave the Qixi loader spinning forever.
+            // for reader.done would leave callers spinning forever.
             try { await reader.cancel(); } catch { /* completion is already assembled */ }
             break;
         }

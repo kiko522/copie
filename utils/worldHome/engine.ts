@@ -13,7 +13,7 @@ import { loadCharacterContextMessages } from '../chatContextRange';
  *   （召回 query 注入"同世界其他角色"，让角色记得自己跟他们的过往）。
  *
  * 产出注入：每个成员的 1v1 聊天各落一条 world_card（可解析 metadata），
- * 与彼方 vr_card 同构，天然进入上下文与记忆管线。
+ * 通过聊天卡片进入上下文与记忆管线。
  */
 
 import type {
@@ -255,7 +255,7 @@ export function rollbackWorldBeat(world: WorldProfile, episode: WorldEpisode, ch
     }
 }
 
-/** 组装某一拍的 world_card metadata（与彼方 vr_card 同构，注入聊天 / 进记忆用）。 */
+/** 组装某一拍的 world_card metadata（注入聊天 / 进记忆用）。 */
 export function buildWorldCardMeta(world: WorldProfile, beat: WorldCharBeat, round: number, storyTime: string): WorldCardMeta {
     return {
         worldCard: true,
@@ -378,7 +378,7 @@ export async function runWorldEpisode(deps: WorldEpisodeDeps): Promise<WorldEpis
             const char = members[i];
             try {
                 const others = memberNames.filter(n => n !== char.name);
-                // 与彼方同款的名字加权召回：让向量记忆召回"我和这些人的关系"，
+                // 名字加权召回：让向量记忆召回"我和这些人的关系"，
                 // 而不是被世界观情景词淹没。query = 当前世界的其他角色。
                 const recallQueryHint = others.length > 0
                     ? [
@@ -558,7 +558,7 @@ export async function runWorldEpisode(deps: WorldEpisodeDeps): Promise<WorldEpis
             }
         }
 
-        // ── 4. world_card 注入各成员 1v1 聊天（与彼方 vr_card 同构；sim 模式不进记忆，跳过） ──
+        // ── 4. world_card 注入各成员 1v1 聊天（sim 模式不进记忆，跳过） ──
         if (entersMemory) {
             for (const beat of beats) {
                 try {

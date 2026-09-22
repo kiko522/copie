@@ -533,7 +533,7 @@ const Shell: React.FC<{ children: React.ReactNode; bg: string }> = ({ children, 
 
 const TopBar: React.FC<{ onBack: () => void; right?: React.ReactNode }> = ({ onBack, right }) => (
     // 顶栏自己接管安全区：统一用全局 --chrome-top（= --safe-top + SullyOS 状态栏高度，
-    // 状态栏隐藏时自动退化为 --safe-top），与「彼方 / 交换日记 / 剧场」等全屏面板一致。
+    // 状态栏隐藏时自动退化为 --safe-top），与「交换日记 / 剧场」等全屏面板一致。
     // 之前用裸 env(safe-area-inset-top) 少让了状态栏那一段，返回键顶得太高。
     <div className="flex items-center justify-between px-4 shrink-0 pb-2 z-30"
         style={{ paddingTop: 'calc(var(--chrome-top) + 0.25rem)' }}>

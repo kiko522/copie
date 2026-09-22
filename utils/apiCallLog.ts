@@ -420,7 +420,6 @@ const FIXED_PROMPT_LABEL_PREFIXES = [
     '关于对方的表达',
     '最后，回到你自己',
     '【音乐互动工具】',
-    '关于《彼方》',
     '[MCP 工具 ON',
     '[Reminder:',
     // 思考链提示词（thinkingChainPrompt.ts）的章节头

@@ -187,7 +187,6 @@ describe('CompanionHome touch request boundaries', () => {
     expect(otomeSource).not.toContain("{ id: AppID.SpecialMoments, label: '日程'");
     expect(otomeSource).toContain("{ key: AppID.SpecialMoments, label: '时光'");
     expect(otomeSource).toContain("key: AppID.Call, label: '通话'");
-    expect(otomeSource).toContain('openApp(AppID.VRWorld)');
     expect(otomeSource).not.toContain('openApp(AppID.WorldHome)');
     expect(otomeSource).toContain("key: AppID.Date, label: '篇章'");
     expect(otomeSource).not.toContain('otome-signal-dot');

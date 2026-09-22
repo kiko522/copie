@@ -173,7 +173,7 @@ const CharCreatorDevApp: React.FC = () => {
                     <Warning size={16} weight="fill" className="text-amber-300 mt-0.5 shrink-0" />
                     <div className="text-[10.5px] text-amber-100/90 leading-relaxed">
                         部件须是<b>透明背景 PNG</b>，且与捏人器画布<b>同尺寸、同锚点</b>（整幅图按位置叠层），否则会错位。
-                        新部件会注入到「特别时光」和「彼方」的捏人器里——<b>下次打开捏人器</b>时生效。
+                        新部件会注入到「特别时光」和手办柜的捏人器里——<b>下次打开捏人器</b>时生效。
                     </div>
                 </div>
 

@@ -221,15 +221,6 @@ describe('优化资源存储（一次性批量迁移）', () => {
         expect(JSON.stringify(rows)).not.toContain('data:image');
     });
 
-    it('我方的彼方 Q 版形象也转（角色那侧和我方这侧是两段代码，只改一边会漏）', async () => {
-        await seedStore('user_profile', [{ id: 'me', name: '小明', vrState: { chibi: { img: TINY_PNG } } }]);
-
-        await optimizeResourceStorage();
-
-        const [me]: any = (await DB.getStoreRowsPage('user_profile', null, 10)).rows;
-        expect(isBlobRef(me.vrState.chibi.img)).toBe(true);
-    });
-
     it('聊天背景与见面背景都转（文件头列了就得真的在代码里）', async () => {
         await DB.saveCharacter({
             id: 'c-bg', name: '背景角色',
@@ -288,21 +279,19 @@ describe('优化资源存储（一次性批量迁移）', () => {
         expect(c.savedDateState.currentSprite).toBeUndefined();
     });
 
-    it('彼方 Q 版形象、查手机通讯录头像、活动卡片头像都转', async () => {
+    it('查手机通讯录头像、活动卡片头像都转', async () => {
         await DB.saveCharacter({
             id: 'c-misc', name: '杂项角色',
-            vrState: { chibi: { img: TINY_PNG } },
             phoneState: { contacts: [{ id: 'ct1', name: '甲', avatar: TINY_JPEG }, { id: 'ct2', name: '乙', avatar: TINY_PNG }] },
-            specialMomentRecords: { qixi_2026_x: { customData: { chatCard: { charAvatar: TINY_JPEG } } } },
+            specialMomentRecords: { seasonal_event_x: { customData: { chatCard: { charAvatar: TINY_JPEG } } } },
         } as any);
 
         await optimizeResourceStorage();
 
         const c: any = (await DB.getAllCharacters()).find(x => x.id === 'c-misc')!;
-        expect(isBlobRef(c.vrState.chibi.img)).toBe(true);
         expect(isBlobRef(c.phoneState.contacts[0].avatar)).toBe(true);
         expect(isBlobRef(c.phoneState.contacts[1].avatar)).toBe(true);
-        expect(isBlobRef(c.specialMomentRecords.qixi_2026_x.customData.chatCard.charAvatar)).toBe(true);
+        expect(isBlobRef(c.specialMomentRecords.seasonal_event_x.customData.chatCard.charAvatar)).toBe(true);
     });
 
     it('活动留存的大图也转（白色情人节明信片 / 520 定妆照）', async () => {
@@ -1553,7 +1542,6 @@ describe('全库对账：收录字段各摆一份，优化后一条 base64 都�
             dateBackground: tinyImage('date-bg'),
             sprites: { normal: tinyImage('sprite-normal') },
             dateSkinSets: [{ id: 'sk1', name: '泳装', sprites: { happy: tinyImage('skin-happy') } }],
-            vrState: { chibi: { img: tinyImage('char-chibi') } },
             phoneState: { contacts: [{ id: 'ct1', name: '甲', avatar: tinyImage('contact') }] },
             companionAvatar: {
                 version: 1, source: 'upload', imageRef: tinyImage('companion'),
@@ -1568,7 +1556,7 @@ describe('全库对账：收录字段各摆一份，优化后一条 base64 都�
                 },
             },
         }]);
-        await seedStore('user_profile', [{ id: 'me', name: '小明', vrState: { chibi: { img: tinyImage('my-chibi') } } }]);
+        await seedStore('user_profile', [{ id: 'me', name: '小明' }]);
         await seedStore('social_posts', [{
             id: 'p1', authorName: '甲', authorAvatar: tinyImage('post-author'), images: [], timestamp: 1,
             comments: [{ id: 'cm1', authorName: '乙', authorAvatar: tinyImage('comment-author') }],

@@ -4,7 +4,7 @@ import { AMSG_INSTANT_CHAT_PENDING_EVENT, listInstantChatPendings } from '../uti
 import { INSTANT_TOTAL_TIMEOUT_MS } from '../worker/amsg/src/instantChat';
 
 /**
- * 聊天生成全局横幅（对标彼方的 VRBroadcast，App 根级挂载）。
+ * 聊天生成全局横幅（App 根级挂载）。
  *
  * 监听 useChatAI / evaluateEmotionBackground 派发的 chat-gen-* 事件，显示
  * 「xx 正在回应…」「xx 正在感受…」。生成闭包在 Chat 卸载后继续跑，事件照发，

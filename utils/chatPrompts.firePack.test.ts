@@ -137,42 +137,6 @@ describe('forFirePack —— 打包时刻的状态一律不烤进模板', () => 
         expect(await build(char, false)).toContain('记录反馈');
     }, 20000);
 });
-
-// 回归守卫：「用户此刻也在《彼方》里」说的是用户当下挂在哪个房间。烤进模板之后，
-// 用户下线好几个小时了，角色还在说「看你小人挂在听歌房」。worker 够不着用户此刻的
-// 彼方状态，所以这一段没有到点补的槽位，属于「不补」的那一类。
-describe('彼方：用户此刻挂在哪个房间不进打包', () => {
-    const vrChar = () => baseChar({ id: 'char-fp-vr', vrState: { enabled: true } });
-    const vrUser = {
-        name: '条条',
-        vrState: { enabled: true, currentRoom: 'music', activity: '发呆中' },
-    } as any;
-
-    const buildVr = async (forFirePack: boolean) => {
-        const parts = await ChatPrompts.buildSystemPromptParts(
-            vrChar(), vrUser, [], [], [], [],
-            realtimeConfig, undefined, undefined, undefined, undefined, undefined,
-            forFirePack ? { forFirePack: true } : undefined,
-        );
-        return `${parts.stable}\n${parts.volatileState}`;
-    };
-
-    it('前台聊天照常告诉角色用户挂在哪个房间', async () => {
-        const out = await buildVr(false);
-        expect(out).toContain('此刻也在《彼方》');
-        expect(out).toContain('【听歌房】');
-        expect(out).toContain('发呆中');
-    });
-
-    it('打包时整段不进；《彼方》是什么的常驻框定照留（那个不随时间变）', async () => {
-        const out = await buildVr(true);
-        expect(out).not.toContain('此刻也在《彼方》');
-        expect(out).not.toContain('【听歌房】');
-        expect(out).not.toContain('发呆中');
-        expect(out).toContain('关于《彼方》');
-    });
-});
-
 describe('天气开着但角色关了时间感知', () => {
     it('不该从天气块里漏出「当前真实时间」', async () => {
         const char = baseChar({ id: 'char-fp-notime', timeAwarenessEnabled: false });
@@ -238,21 +202,5 @@ describe('小红书：worker 够不着的服务器不写进 fire_pack', () => {
 
     it('公网地址：打包时照常带上', async () => {
         expect(await withServer('https://xhs.example.com', true)).toContain('小红书');
-    });
-});
-
-
-describe('SAR public introduction', () => {
-    it.each(['manual', 'scheduled'])('enabled %s characters know the public setting without the manual-only extra paragraph', async activityMode => {
-        const char = baseChar({ vrState: { enabled: true, activityMode } });
-        for (const firePack of [false, true]) {
-            const out = await build(char, firePack);
-            expect(out).toContain('凯恩和艾文是来自另一个世界的玩家');
-            expect(out).toContain('是否见过、聊过、熟不熟，要以实际活动记录和记忆为准');
-            expect(out).not.toContain('仅手动活动');
-        }
-    });
-    it('does not give disconnected characters the SAR introduction', async () => {
-        expect(await build(baseChar({ vrState: { enabled: false } }), false)).not.toContain('凯恩和艾文是来自另一个世界的玩家');
     });
 });

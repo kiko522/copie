@@ -52,11 +52,6 @@
           - 'components/mcd/**'
           - 'utils/mcd*'
 
-'scope: vrWorld':
-  - changed-files:
-      - any-glob-to-any-file:
-          - 'apps/VRWorldApp.tsx'
-
 'scope: diary':
   - changed-files:
       - any-glob-to-any-file:

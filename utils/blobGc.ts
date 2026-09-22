@@ -15,7 +15,7 @@
 // | 面 | 内容字段 | 吐法 |
 // |---|---|---|
 // | characters 表 | avatar / sprites / dateSkinSets / roomConfig（wallImage/floorImage/items[].image）
-// |               | / chatBackground / dateBackground / vrState.chibi / phoneState.contacts[].avatar
+// |               | / chatBackground / dateBackground / phoneState.contacts[].avatar
 // |               | / specialMomentRecords.*（.image 与 customData 里的头像、手办图）
 // |               | / companionAvatar（含 imageWardrobe，令牌兼任条目 id 与
 // |               |   imageRef 两个值位）/ videoCallBackground / companionBackground / studio.like520 | 分页逐行 JSON.stringify(row) |

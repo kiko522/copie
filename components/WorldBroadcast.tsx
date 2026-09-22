@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 /**
  * 「家园」全局生成喇叭 —— 任意界面都能看到某个世界正在演绎（推进一段 / 结卷）。
  * 监听 runWorldEpisode 派发的 world-episode-* / world-chapter-* 事件，App 根级挂载。
- * 与彼方 VRBroadcast 同构，但走家园的淡紫风。
+ * 家园演绎的全局横幅，使用淡紫风。
  */
 interface WorldGen { worldId: string; worldName: string; storyTime?: string; done: number; total: number; charName?: string; chapter?: number; }
 

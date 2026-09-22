@@ -68,7 +68,7 @@ export interface BuildChatPayloadInput {
     contextHighWaterMark?: number;
     /**
      * 额外的记忆召回提示词（拼进向量/BM25 检索的 context query）。
-     * 用途：彼方等场景下，把"此刻在场的其他玩家名字 / 房间上下文"塞进召回 query，
+     * 用途：独立场景把"此刻在场的其他玩家名字 / 房间上下文"塞进召回 query，
      * 让角色能回忆起自己跟对面这些人的关系，而不是只按聊天历史召回。
      */
     recallQueryHint?: string;
@@ -101,7 +101,7 @@ export interface BuildChatPayloadInput {
     luckinChat?: LuckinChatState;
     /**
      * 把历史里的多模态图片消息（content 数组 + image_url）压平成纯文本占位。
-     * 彼方/小小窝等复用聊天历史、但配了独立 API 的场景必须开：目标模型可能不支持
+     * 小小窝等复用聊天历史、但配了独立 API 的场景必须开：目标模型可能不支持
      * 视觉输入（DeepSeek 等对 image_url 直接 400），且这些纯文本情景里 base64 图片
      * 只是把上下文撑爆的噪声（与群聊注入"不要把媒体当文本塞"同一约定）。
      */
@@ -226,7 +226,7 @@ export async function buildChatRequestPayload(input: BuildChatPayloadInput): Pro
         translationConfig, htmlMode, thinkingChain, mcdMiniSnap, luckinMiniSnap, luckinChat,
     } = input;
     // 角色可见性必须在统一载荷层再次收口。UI 聊天、1.0 本地主动消息、2.0 推送、
-    // 彼方/小小窝等调用方各自维护筛选很容易漏掉一条路径；一旦把全量表情传进来，
+    // 小小窝等调用方各自维护筛选很容易漏掉一条路径；一旦把全量表情传进来，
     // 模型既会看到其他角色的专属表情，历史里的同名表情也可能反查到错误 URL。
     // 即使调用方已经过滤过，重复过滤仍是幂等的。
     const { emojis, categories } = ChatPrompts.filterVisibleEmojis(

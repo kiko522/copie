@@ -166,15 +166,10 @@ describe('Local Context Analyzer', () => {
         const recent = [message('user', '我过了')];
 
         const chatTrace = await injectMemoryPalace(char, recent, undefined, undefined, { entryPoint: 'chat_app' });
-        const vrTrace = await injectMemoryPalace(char, recent, undefined, undefined, { entryPoint: 'vr_world' });
-
         expect(chatTrace.contextAnalyzer?.shouldGuide).toBe(true);
         expect(chatTrace.contextAnalyzer?.signals.resultUpdate).toBe(1);
         expect(chatTrace.recallResolver).toEqual({ status: 'deferred' });
         expect(chatTrace.stages.some(stage => stage.name === 'context_analyzer')).toBe(true);
-        expect(vrTrace.contextAnalyzer).toBeUndefined();
-        expect(vrTrace.recallResolver).toEqual({ status: 'out_of_scope' });
-        expect(vrTrace.stages.some(stage => stage.name === 'context_analyzer')).toBe(false);
     });
 
     it('does not spend gate work while the feature flag is off', async () => {

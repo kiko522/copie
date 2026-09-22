@@ -2,11 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { ChatPrompts } from './chatPrompts';
 import { flattenImageContentParts } from './chatRequestPayload';
 
-// 锁住「彼方/家园等独立 API 场景把历史图片压平成纯文本」的修复。
+// 锁住「家园等独立 API 场景把历史图片压平成纯文本」的修复。
 //
 // 链路: 用户在聊天里发过图 → buildMessageHistory 把该条构造成
 //   content: [{type:'text',...}, {type:'image_url',...}]
-// → 彼方/家园复用同一份历史发给自己配置的 API。目标模型若不支持视觉
+// → 家园复用同一份历史发给自己配置的 API。目标模型若不支持视觉
 // (DeepSeek 等), 对 image_url 直接 400: "unknown variant `image_url`,
 // expected `text`"。修复后这两条路径经 flattenImageContentParts 压平,
 // 只保留 text 部分 (自带 [User sent an image] 占位), 与 buildMessageHistory

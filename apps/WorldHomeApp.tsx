@@ -64,7 +64,7 @@ const persistWorldApi = (cfg: { baseUrl: string; apiKey: string; model: string }
     try { if (cfg?.baseUrl) localStorage.setItem(WORLD_API_KEY, JSON.stringify(cfg)); else localStorage.removeItem(WORLD_API_KEY); } catch { /* ignore */ }
 };
 
-/** 家园全局 API 设置弹窗（学彼方：跟随全局默认 / 选「设置」里保存的预设；所有世界共用）。 */
+/** 家园全局 API 设置弹窗：跟随全局默认 / 选「设置」里保存的预设；所有世界共用。 */
 const WorldApiSettings: React.FC<{
     apiConfig: APIConfig;
     apiPresets: ApiPreset[];
@@ -155,7 +155,7 @@ radial-gradient(2px 2px at 72% 24%, #fff, transparent),
 radial-gradient(1px 1px at 84% 56%, #ffeebb, transparent),
 radial-gradient(1.5px 1.5px at 92% 32%, #fff, transparent)`;
 
-/** Q版小人（彼方捏人系统的 chibi，兜底头像）。 */
+/** Q版小人（角色 chibi，兜底头像）。 */
 const ChibiFigure: React.FC<{ char: CharacterProfile; size?: number; bob?: boolean }> = ({ char, size = 56, bob }) => {
     const c = getChibi(char);
     if (!c.img) {

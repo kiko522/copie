@@ -54,11 +54,9 @@
 //     从而整轮不敢删（新写入的快照已经直接写占位符，见 utils/applyAssistantPostProcessing.ts）
 //   emojis url                       ← Chat 表情导入（http 外链不是本机资源，不转）
 //   user_profile avatar / perCharAvatars ← 个人档案的头像上传 / 分角色聊天头像
-//   user_profile vrState.chibi.img   ← 手办柜 / 彼方（ChibiStudio、VRWorldApp）
 //   characters sprites / dateSkinSets[].sprites ← 见面场景布置的立绘上传（DateSettings）
 //   characters chatBackground        ← 聊天页的背景图上传（Chat）
 //   characters dateBackground        ← 见面场景布置的背景图上传（DateSettings）
-//   characters vrState.chibi.img     ← 手办柜 / 彼方
 //   characters phoneState.contacts[].avatar ← 查手机通讯录（值是角色头像的副本）
 //   characters specialMomentRecords.*.image ← 活动留存的大图（白色情人节明信片、520 定妆照）
 //   characters specialMomentRecords.*.customData.chatCard.charAvatar ← 活动留存的聊天卡片
@@ -467,13 +465,6 @@ export async function optimizeResourceStorage(
                 const token = await convert((c as any)[key]);
                 if (token) { (c as any)[key] = token; changed = true; }
             }
-            // 彼方 / 小小窝的 Q 版形象。写端存的是裸 dataURL（ChibiStudio、VRWorldApp），
-            // 所以这一面确实有存量——别被「chibi 都是令牌原生」的印象骗了。
-            const vrChibi = (c as any).vrState?.chibi;
-            if (vrChibi) {
-                const token = await convert(vrChibi.img);
-                if (token) { vrChibi.img = token; changed = true; }
-            }
             // 「查手机」通讯录里的联系人头像，值是角色头像的副本。
             const contacts = (c as any).phoneState?.contacts;
             if (Array.isArray(contacts)) {
@@ -672,12 +663,6 @@ export async function optimizeResourceStorage(
                     const token = await convert(perChar[charId]);
                     if (token) { perChar[charId] = token; changed = true; }
                 }
-            }
-            // 我方的彼方 Q 版形象，跟角色那侧同一套渲染。
-            const myChibi = p?.vrState?.chibi;
-            if (myChibi) {
-                const token = await convert(myChibi.img);
-                if (token) { myChibi.img = token; changed = true; }
             }
             if (changed) { await writeRow(() => DB.putStoreRows('user_profile', [p])); await yieldMain(); }
         }

@@ -56,7 +56,7 @@ function sameMemories(a: MemoryFragment[] | undefined, b: MemoryFragment[]): boo
 /**
  * 把 processNewMessages 的自动归档建议真正写入角色档案。
  *
- * 过去这一步散落在 React 调用方：Push、彼方、家园等入口只接了宫殿写入，忘了接返回值，
+ * 过去这一步散落在 React 调用方：Push、家园等入口只接了宫殿写入，忘了接返回值，
  * 于是出现“宫殿有总结、神经链接没副本”。现在所有自动入口统一走本函数。
  */
 export function persistAutoArchiveResult(

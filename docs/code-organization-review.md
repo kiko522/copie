@@ -42,8 +42,8 @@
 |---|------|---------|
 | B1 🔴 | `utils/` 顶层平铺 235 个文件，业务核心被错放 | 148 实现（49,074 行）+ 87 测试交错平铺；`db.ts`、`realtimeContext.ts` 2232 行、`applyAssistantPostProcessing.ts` 1887 行（聊天主链路）、`lifeSimEngine.ts` 1486 行（整个游戏引擎）等 32 个 500+ 行文件都不是"工具"。分目录标准倒挂：47 文件的 `memoryPalace/` 与 1 文件的 `like520/` 并存，而更大的音乐/TTS 集群（21 文件 4,899 行）、lifeSim（10 文件 4,147 行）、push（13 文件）、MCP（14 文件）仍平铺 |
 | B2 🟡 | 无 src/：43 个根条目源码与杂物混排 | 前端源码、5 套后端目录、研究笔记 notes/、Windows .bat、6.2MB 零引用的 pics/、被遗弃的 更新日志/ 同层；单一 tsconfig `include: **/*.ts` 把浏览器/Node/Cloudflare/Deno 代码用同一套 DOM lib 一锅端 |
-| B3 🟡 | apps/ 与 components/ 边界靠惯例 | 「聊天」一个功能横跨 `apps/Chat.tsx` + `components/chat/`(18 文件) + `components/luckin/` + `components/mcd/` + `utils/chat*`(16 文件)；components/ 的 15 个子目录多数是单一 app 的私有件；39 个平铺 app 里 27 个叫 `*App.tsx`、12 个不是；`apps/theater/` 是 VRWorld 的面板而独立 app 却叫 `DreamTheater.tsx` |
-| B4 🟡 | 命名双轨制造成同名混淆 | 4 个 `prompts.ts`（groupChat/vrWorld/worldHome/like520）与 5 个顶层 `*Prompts.ts` 并存；2 个 `db.ts`、2 个 `format.ts`；`context.ts`（ContextBuilder）与 `realtimeContext.ts`（天气感知）毫无关系却近名 |
+| B3 🟡 | apps/ 与 components/ 边界靠惯例 | 「聊天」一个功能横跨 `apps/Chat.tsx` + `components/chat/`(18 文件) + `components/luckin/` + `components/mcd/` + `utils/chat*`(16 文件)；components/ 的多个子目录是单一 app 的私有件；平铺 app 同时存在 `*App.tsx` 与其他命名 |
+| B4 🟡 | 命名双轨制造成同名混淆 | 多个域内 `prompts.ts` 与顶层 `*Prompts.ts` 并存；2 个 `db.ts`、2 个 `format.ts`；`context.ts`（ContextBuilder）与 `realtimeContext.ts`（天气感知）毫无关系却近名 |
 | B5 🟡 | 零路径别名 | tsconfig 无 paths、vite/vitest 无 alias；`../../` 导入 313 条。目前没有 `../../../` 只是因为目录全摊平——布局因此被钉死，一动就断几百处 |
 | B6 🟢 | 死代码与死资产 | `utils/toolbox.ts`、`brainAgent.ts`、`archiveTemplate.ts` 全仓零引用（444 行）；`PhoneShell.tsx` 152-257 行整块注释的旧版 AppErrorBoundary；`pics/` 6.2MB、`assets/icon.png` 2.4MB 零引用；`更新日志/` 已被遗弃（真身是被 FAQApp 引用的 `public/changelogs/`，且两处 2026-5 已漂移） |
 
@@ -72,7 +72,7 @@
 |---|------|---------|
 | E1 🔴 | 主代理 `worker/index.js`：3771 行单文件纯 JS | 无 TS、无 wrangler.toml、靠面板粘贴部署，却是改动最热的后端文件（11 天 7 commits）；承载 10+ 类能力（搜索/WebDAV/GitHub/Notion/飞书/MCP/XHS Lite…）；`worker/xhs-lite/` 目录里只有文档和测试，代码已并入 index.js——目录名指向的代码不在目录里 |
 | E2 🟡 | 死目标仍在仓库且文档当作活的 | `worker/proactive-push/` 已被前端 `FORCE_DISABLED=true` 全局停用但 README:299 仍教人部署；`netlify/functions/webdav-proxy.ts` 零调用方；`cloudflare/` 两文件是已并入 index.js 的参考副本 |
-| E3 🟡 | 后端地址配置碎成约 7 套机制 | 中心代理 localStorage key、网易云单独持久化、XHS 派生 + 死域名改写补丁、instant-push 用户自填、AMSG 走环境变量、post-office 硬编码 `noir2.cc.cd`…… |
+| E3 🟡 | 后端地址配置碎成约 6 套机制 | 中心代理 localStorage key、网易云单独持久化、XHS 派生 + 死域名改写补丁、instant-push 用户自填、AMSG 走环境变量…… |
 | E4 🟡 | 后端蔓延无地图 | `api/`、`server/`、`netlify/`、`cloudflare/` 在 README 与 docs/ **零提及**；mcp-proxy README 链接的 `docs/mcp-integration.md` 不存在；.gitignore 注释里的脚本名也是过时的 |
 | E5 🟢 | workspace 卫生 | pnpm-workspace 声明 `worker/*` 但 6 个 worker 只有 1 个有 package.json、0 个有 tsconfig；Netlify 服务端依赖混在前端根 package.json；7 个构建产物 bundle 提交进 git 且 `public/instant-worker.deno.bundle.js` 与 worker/ 下那份字节相同的双份入库；浏览器 Service Worker（`sw-keep-alive.ts` 710 行）放在服务端 worker 目录下 |
 
@@ -104,7 +104,7 @@
 
 ### 阶段 1 · 机械重构（1-2 周，低风险纯移动，可分批多 PR）
 
-7. **拆 types.ts**：按现成段落注释边界拆成 `types/` 下 15-20 个域文件（core/character/chat/vrworld/worldhome/lifesim/handbook/backup…），根 `types.ts` 保留 `export * from './types/...'` barrel——**303 处现有 import 零改动**。顺手：删 RealtimeConfig 副本（统一 feishuEnabled 可选性）、brainAgent 副本改派生、CharacterProfile/FullBackupData 按子系统分组成组合接口（减少多人同时追加字段的行级冲突）。
+7. **拆 types.ts**：按现成段落注释边界拆成 `types/` 下多个域文件（core/character/chat/worldhome/lifesim/handbook/backup…），根 `types.ts` 保留 `export * from './types/...'` barrel。顺手：删 RealtimeConfig 副本（统一 feishuEnabled 可选性）、brainAgent 副本改派生、CharacterProfile/FullBackupData 按子系统分组成组合接口（减少多人同时追加字段的行级冲突）。
 8. **拆 utils/db.ts**：按 store/领域分文件，db.ts 做 re-export 兼容；`exportXxxLocal/importXxxLocal` 一排 import 改注册表模式（备份模块向 db 注册处理器），顺手解开 db.ts 循环环。
 9. **utils/ 目录化**：定规则「同域 ≥3 文件或 ≥1000 行即建目录」，把现成集群机械迁入：`utils/audio/`(21)、`utils/mcp/`(14)、`utils/push/`(13)、`utils/lifeSim/`(10)、`utils/backup/`(10)、`utils/charCreator/`(9)、`utils/chatPipeline/`（applyAssistantPostProcessing + chatPrompts + context.ts 等）。进目录后用短名（`lifeSim/engine.ts`），顶层前缀自然消失；测试随源文件走，组件测试移回 components/ 旁，仓库级约束测试进 `tests/invariants/`。单独改名两处高危近名：`context.ts → contextBuilder.ts`、`theaterGenerator.ts → scheduleTheater.ts`。
 10. **消 12 条逆向依赖**：MusicContext 的非 React 逻辑（loadMusicCfgStandalone/musicApi/parseLyric）下沉 `utils/musicCore.ts`；`evaluateEmotionBackground` 从 useChatAI 抽到 `utils/emotionEval.ts`；PixelLayoutDB 从 apps/ 移到 utils/；之后用 eslint/biome 的 import 限制规则把「utils 不依赖上层」变成可检查约束。

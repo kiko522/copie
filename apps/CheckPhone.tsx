@@ -749,8 +749,8 @@ ${rosterInfo}
 
 **真假甄别 + 关系判定（务必走心）**：
 - 联系人就是名单里的人 → "kind":"real"，"linkedName" 填名单里的**原名**；否则按人设虚构 → "kind":"npc"。
-- **关系必须贴合上面每个真实角色的设定与已知关系，别凭空安成「同事/老友」**。机主跟某人**根本不认识、或只是在某处（如「彼方」VR 世界）打过照面**，就如实标（如「彼方网友」「不太熟」「点头之交」），**不认识就别硬塞进通讯录**。
-- "identity" 写**机主对 TA 的称呼 / 关系备注**（如「学长」「前任」「彼方网友」「中间人」），要具体贴合来历、别只写真名——它会作为备注名显示。${fictionRule}`;
+- **关系必须贴合上面每个真实角色的设定与已知关系，别凭空安成「同事/老友」**。机主跟某人**根本不认识、或只是见过几面**，就如实标（如「不太熟」「点头之交」），**不认识就别硬塞进通讯录**。
+- "identity" 写**机主对 TA 的称呼 / 关系备注**（如「学长」「前任」「中间人」），要具体贴合来历、别只写真名——它会作为备注名显示。${fictionRule}`;
 
             let promptInstruction = "";
             let logPrefix = "";
@@ -788,7 +788,7 @@ ${realCharRule}
 ${realCharRule}
 
 每个联系人给出：姓名、关系备注(identity)、机主对 TA 的好感度(-100~100)、一句机主视角的备注(detail)。真实角色要符合上面的设定与已知关系，别瞎安。
-格式JSON数组: [{ "title": "真实角色填原名/虚构填名字", "kind": "real|npc", "linkedName": "若 real 填真实角色原名否则留空", "identity": "机主对 TA 的称呼/关系，如 学长/前任/彼方网友", "affinity": 20, "detail": "一句备注，比如：在彼方认识的，聊得来；或：欠我一顿饭，最近老已读不回。" }, ...]`;
+格式JSON数组: [{ "title": "真实角色填原名/虚构填名字", "kind": "real|npc", "linkedName": "若 real 填真实角色原名否则留空", "identity": "机主对 TA 的称呼/关系，如 学长/前任/中间人", "affinity": 20, "detail": "一句备注，比如：只见过几次，不太熟；或：欠我一顿饭，最近老已读不回。" }, ...]`;
                     logPrefix = "通讯录";
                 } else if (type === 'call') {
                     promptInstruction = `生成 3 条该角色的近期**通话记录**。
@@ -3110,7 +3110,7 @@ ${olderText}
                                     </div>
                                     {editingIdentity ? (
                                         <div className="space-y-2">
-                                            <input value={identityDraft} onChange={e => setIdentityDraft(e.target.value)} placeholder="例如：学长、前任、彼方网友"
+                                            <input value={identityDraft} onChange={e => setIdentityDraft(e.target.value)} placeholder="例如：学长、前任、中间人"
                                                 className="w-full bg-white/[0.05] border border-white/[0.08] rounded-xl p-2.5 text-[12px] text-white/90" />
                                             <button onClick={() => handleSaveIdentity(c)} className="w-full py-2 rounded-xl text-[12px] font-semibold text-white" style={{ background: accent }}>保存</button>
                                             <p className="text-[9.5px] text-white/30">留空保存会恢复显示真名；人工保存后不会被再次扫描覆盖</p>

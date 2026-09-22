@@ -665,7 +665,7 @@ function isFoldedLegacy(part, item) {
 let LIKE520_MODE = 'char';
 let LIKE520_CHAR_NAME = '';
 let LIKE520_IS_SULLY = false;
-let LIKE520_DRAFT_KEY = ''; // 调用方可传唯一 draftKey 做草稿隔离（如彼方按 char.id）
+let LIKE520_DRAFT_KEY = ''; // 调用方可传唯一 draftKey 做草稿隔离
 
 function applyLike520Init(init) {
   if (!init) return;
@@ -747,9 +747,6 @@ if (IS_EMBEDDED) {
     } else if (e.data.type === 'like520_add_items') {
       // 仅合并自定义部件，不重新初始化（不会重置当前选择）
       mergeExtraItems(e.data.payload && e.data.payload.extraItems);
-    } else if (e.data.type === 'like520_roll') {
-      // 「彼方·剧院」headless 随机生成一个 NPC 立绘
-      rollAndExport();
     }
   });
 }
@@ -2192,33 +2189,6 @@ function randomizeAll() {
 }
 document.getElementById("btnRandom").onclick = () => { randomizeAll(); toast("✨ 随机搭配好啦"); };
 
-/* headless：随机一套 + 直接导出透明立绘并回传父框架，供「彼方·剧院」程序化 roll NPC 用
-   （不弹导出弹窗、不需要用户交互）。 */
-async function rollAndExport() {
-  try {
-    randomizeAll();
-    /* 等两帧让 renderCharacter 把 DOM/图片更新完 */
-    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-    if (typeof html2canvas === "undefined") {
-      await new Promise((res, rej) => {
-        const s = document.createElement("script");
-        s.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
-        s.onload = res; s.onerror = rej;
-        document.head.appendChild(s);
-      });
-    }
-    const charEl = document.querySelector(".character");
-    const canvas = await html2canvas(charEl, { backgroundColor: null, scale: 2, useCORS: true });
-    const transparentDataUrl = canvas.toDataURL("image/png");
-    window.parent.postMessage({
-      type: 'like520_result',
-      payload: { mode: LIKE520_MODE, dataUrl: transparentDataUrl, frameDataUrl: null, transparentDataUrl, state: JSON.parse(JSON.stringify(state)) }
-    }, '*');
-  } catch (err) {
-    window.parent.postMessage({ type: 'like520_roll_error', payload: { error: String(err && err.message || err) } }, '*');
-  }
-}
-
 document.getElementById("btnReset").onclick = () => {
   Object.keys(state.selected).forEach(k => {
     state.selected[k] = Array.isArray(state.selected[k]) ? [] : null;
@@ -2558,7 +2528,7 @@ function exportTracingTemplate() {
    key: mode + charName，让每个角色 + 是否是 user 各自存一份
    存的只是 state（小 JSON），不存图片 PNG */
 function getDraftKey() {
-  // 调用方传了唯一 draftKey（如彼方按 char.id）→ 草稿按它隔离，且与 520 互不串
+  // 调用方传了唯一 draftKey → 草稿按它隔离，且与 520 互不串
   if (LIKE520_DRAFT_KEY) return `like520_cc_draft_k_${LIKE520_DRAFT_KEY}`;
   return `like520_cc_draft_${LIKE520_MODE}_${LIKE520_CHAR_NAME || 'default'}`;
 }

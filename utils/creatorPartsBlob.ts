@@ -1,4 +1,4 @@
-// 捏人器（彼方 / 520 共用的 chibi 捏脸系统）自定义部件的 base64 ⇄ Blob 桥。
+// chibi 捏人器自定义部件的 base64 ⇄ Blob 桥。
 //
 // 部件（CustomCreatorPart.src / shadowSrc）历来是 base64 PNG 存进 cc_custom_parts store，
 // PSD 整批导入一次能塞几十个，很吃 IndexedDB 配额。这里把「存储」改成 Blob（blobref 令牌），

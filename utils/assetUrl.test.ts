@@ -60,9 +60,9 @@ describe('mirrorsForUrl', () => {
 
 describe('audioMirrors', () => {
     it('prioritizes the byte-range capable GitHub Raw source for repository audio', () => {
-        const mirrors = audioMirrors('bgm/qixi/02/02_0_旧钟房间.mp3');
+        const mirrors = audioMirrors('bgm/letter/1.mp3');
         expect(mirrors[0]).toBe(
-            'https://raw.githubusercontent.com/qegj567-cloud/SullyOS-assets/main/bgm/qixi/02/02_0_旧钟房间.mp3',
+            'https://raw.githubusercontent.com/qegj567-cloud/SullyOS-assets/main/bgm/letter/1.mp3',
         );
         expect(new Set(mirrors).size).toBe(mirrors.length);
     });

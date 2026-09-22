@@ -134,9 +134,9 @@ export interface CreatorIframeProps {
     /** 捏人器导出的完整 state：整套还原选件+换色+翻转（草稿仍优先；比 presets 优先） */
     savedState?: any;
     isSully?: boolean;
-    /** 唯一草稿键（如彼方按 char.id），让草稿按角色隔离、与 520 互不串 */
+    /** 唯一草稿键，让草稿按角色隔离、与 520 互不串 */
     draftKey?: string;
-    /** 覆盖标题（彼方用来去掉「变得小小的 520」文案） */
+    /** 覆盖默认标题 */
     title?: string;
     /** 覆盖英文副标题 */
     subtitle?: string;
