@@ -1,12 +1,45 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bank, CreditCard, Plus, Trash } from '@phosphor-icons/react';
-import type { BankCard, CharacterProfile, UserProfile } from '../../types';
+import type { BankCard, BankCardStyle, CharacterProfile, UserProfile } from '../../types';
 import { DB } from '../../utils/db';
 import { BANK_CARD_STYLES, DEFAULT_BANK_CARD_STYLE_ID } from '../../utils/bankCardStyles';
 import { formatMoney } from '../../utils/format';
 import Modal from '../os/Modal';
 
 const makeId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+const CardArtwork: React.FC<{ style: BankCardStyle; preview?: boolean }> = ({ style, preview = false }) => {
+    if (!style.artwork) return null;
+    const { artwork } = style;
+
+    return (
+        <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+            <img src={artwork.backgroundImage} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            <div className="absolute inset-0" style={{ background: artwork.overlay }} />
+            {artwork.portraitImage && (
+                <img
+                    src={artwork.portraitImage}
+                    alt=""
+                    className={`absolute bottom-[-2%] right-[-2%] object-contain object-bottom ${preview ? 'h-[112%] w-[68%]' : 'h-[116%] w-[70%]'}`}
+                />
+            )}
+            {artwork.primarySignatureImage && (
+                <img
+                    src={artwork.primarySignatureImage}
+                    alt=""
+                    className={`absolute left-[5%] object-contain ${preview ? 'top-[38%] w-[30%]' : 'top-[35%] w-[34%]'}`}
+                />
+            )}
+            {artwork.secondarySignatureImage && (
+                <img
+                    src={artwork.secondarySignatureImage}
+                    alt=""
+                    className={`absolute left-[7%] object-contain opacity-90 ${preview ? 'top-[69%] w-[25%]' : 'top-[68%] w-[27%]'}`}
+                />
+            )}
+        </div>
+    );
+};
 
 interface Props {
     characters: CharacterProfile[];
@@ -88,16 +121,21 @@ const BankCardWallet: React.FC<Props> = ({ characters, userProfile, addToast }) 
                 <div className="space-y-3">
                     {cards.map(card => {
                         const style = BANK_CARD_STYLES.find(item => item.id === card.styleId) || BANK_CARD_STYLES[0];
-                        return <div key={card.id} className="relative overflow-hidden rounded-2xl p-4 shadow-md" style={{ background: style.background, color: style.foreground }}>
+                        return <div key={card.id} className="relative aspect-[1.586/1] overflow-hidden rounded-2xl p-4 shadow-md" style={{ background: style.background, color: style.foreground }}>
+                            <CardArtwork style={style} />
+                            {style.artwork && <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#020817]/70 via-transparent to-[#020817]/20" aria-hidden="true" />}
+                            <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-inset ring-white/20" aria-hidden="true" />
+                            <div className="relative z-10 flex h-full flex-col justify-between">
                             <div className="flex items-start justify-between gap-3">
-                                <div><div className="text-[10px] font-bold uppercase tracking-widest opacity-70">{card.issuerName}</div><div className="mt-1 text-base font-black">{card.nickname}</div></div>
+                                <div className={style.artwork ? 'max-w-[45%] drop-shadow-[0_1px_3px_rgba(0,0,0,.75)]' : ''}><div className="text-[10px] font-bold uppercase tracking-widest opacity-70">{card.issuerName}</div><div className="mt-1 text-base font-black">{card.nickname}</div></div>
                                 <div className="flex gap-1">
-                                    {!card.isDefault && <button onClick={() => void setDefault(card)} className="rounded-full bg-white/20 px-2 py-1 text-[9px] font-bold">设为默认</button>}
-                                    {card.isDefault && <span className="rounded-full bg-white/20 px-2 py-1 text-[9px] font-bold">默认</span>}
-                                    <button onClick={() => void deleteCard(card)} aria-label="删除银行卡" className="rounded-full bg-black/10 p-1.5"><Trash size={12} /></button>
+                                    {!card.isDefault && <button onClick={() => void setDefault(card)} className="rounded-full bg-black/25 px-2 py-1 text-[9px] font-bold backdrop-blur-sm">设为默认</button>}
+                                    {card.isDefault && <span className="rounded-full bg-black/25 px-2 py-1 text-[9px] font-bold backdrop-blur-sm">默认</span>}
+                                    <button onClick={() => void deleteCard(card)} aria-label="删除银行卡" className="rounded-full bg-black/25 p-1.5 backdrop-blur-sm"><Trash size={12} /></button>
                                 </div>
                             </div>
-                            <div className="mt-7 flex items-end justify-between"><div className="font-mono text-sm tracking-[0.22em]">•••• {card.last4}</div><div className="text-right"><div className="text-[9px] opacity-70">可用余额</div><div className="text-xl font-black">¥{formatMoney(card.balance)}</div></div></div>
+                            <div className="flex items-end justify-between drop-shadow-[0_1px_3px_rgba(0,0,0,.85)]"><div className="font-mono text-sm tracking-[0.22em]">•••• {card.last4}</div><div className="rounded-xl bg-black/20 px-2.5 py-1.5 text-right backdrop-blur-[2px]"><div className="text-[9px] opacity-70">可用余额</div><div className="text-xl font-black">¥{formatMoney(card.balance)}</div></div></div>
+                            </div>
                         </div>;
                     })}
                 </div>
@@ -113,7 +151,7 @@ const BankCardWallet: React.FC<Props> = ({ characters, userProfile, addToast }) 
                     </div>
                     <label className="block text-xs font-bold text-[#8D6E63]">发卡机构<input value={issuerName} onChange={event => setIssuerName(event.target.value)} className="mt-1.5 w-full rounded-xl border border-[#E8DCC8] bg-[#FDF6E3] px-3 py-3 outline-none" /></label>
                     <label className="block text-xs font-bold text-[#8D6E63]">初始余额<input type="number" min="0" step="0.01" value={balance} onChange={event => setBalance(event.target.value)} className="mt-1.5 w-full rounded-xl border border-[#E8DCC8] bg-[#FDF6E3] px-3 py-3 text-lg font-black outline-none" /></label>
-                    <div><div className="mb-2 text-xs font-bold text-[#8D6E63]">卡面</div><div className="grid grid-cols-2 gap-2">{BANK_CARD_STYLES.map(style => <button key={style.id} onClick={() => setStyleId(style.id)} className={`rounded-xl p-3 text-left text-xs font-bold ${styleId === style.id ? 'ring-2 ring-[#6D4C41] ring-offset-2' : ''}`} style={{ background: style.background, color: style.foreground }}>{style.name}</button>)}</div></div>
+                    <div><div className="mb-2 text-xs font-bold text-[#8D6E63]">卡面</div><div className="grid grid-cols-2 gap-2">{BANK_CARD_STYLES.map(style => <button key={style.id} onClick={() => setStyleId(style.id)} className={`relative min-h-[76px] overflow-hidden rounded-xl p-3 text-left text-xs font-bold ${styleId === style.id ? 'ring-2 ring-[#6D4C41] ring-offset-2' : ''}`} style={{ background: style.background, color: style.foreground }}><CardArtwork style={style} preview /><span className="relative z-10 inline-block max-w-[72%] rounded-lg bg-black/20 px-2 py-1 drop-shadow-[0_1px_2px_rgba(0,0,0,.8)] backdrop-blur-[1px]">{style.name}</span></button>)}</div></div>
                 </div>
             </Modal>
         </section>

@@ -5,6 +5,20 @@ import { BankCardStyle } from '../types';
  * 后续增加卡面只需追加 style，不需要迁移用户已创建的银行卡。
  */
 export const BANK_CARD_STYLES: BankCardStyle[] = [
+    {
+        id: 'xia-yizhou-flightline',
+        name: '夏以昼 · 破晓航线',
+        background: 'linear-gradient(135deg,#06152f,#0b3f9d 58%,#f28a22)',
+        foreground: '#f8fbff',
+        muted: '#bfdbfe',
+        artwork: {
+            backgroundImage: '/bank-cards/xia-yizhou/flightline-background.png',
+            portraitImage: '/bank-cards/xia-yizhou/portrait-cutout.png',
+            primarySignatureImage: '/bank-cards/xia-yizhou/signature-zh.png',
+            secondarySignatureImage: '/bank-cards/xia-yizhou/signature-en.png',
+            overlay: 'linear-gradient(90deg,rgba(2,9,25,.42) 0%,rgba(2,9,25,.08) 48%,rgba(2,9,25,.18) 100%)',
+        },
+    },
     { id: 'crimson-gold', name: '绛红鎏金', background: 'linear-gradient(135deg,#7f1d1d,#dc2626 56%,#f59e0b)', foreground: '#fff7ed', muted: '#fed7aa' },
     { id: 'ocean-business', name: '深海商务', background: 'linear-gradient(135deg,#0f172a,#1d4ed8 58%,#38bdf8)', foreground: '#f8fafc', muted: '#bae6fd' },
     { id: 'obsidian-gold', name: '曜石黑金', background: 'linear-gradient(135deg,#09090b,#27272a 58%,#a16207)', foreground: '#fef3c7', muted: '#d6d3d1' },

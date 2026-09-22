@@ -1893,6 +1893,14 @@ export interface BankCardStyle {
     background: string;
     foreground: string;
     muted: string;
+    /** 可选的收藏卡式分层素材；未配置时仍使用普通渐变卡面。 */
+    artwork?: {
+        backgroundImage: string;
+        portraitImage?: string;
+        primarySignatureImage?: string;
+        secondarySignatureImage?: string;
+        overlay?: string;
+    };
 }
 
 export type CommerceOrderType = 'delivery' | 'shopping';
