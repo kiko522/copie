@@ -23,6 +23,17 @@ describe('parseEmojiImportLine', () => {
         });
     });
 
+    it('parses a name directly followed by an image URL', () => {
+        expect(parseEmojiImportLine('贴贴https://img.example.com/cuddle.png')).toEqual({
+            name: '贴贴',
+            url: 'https://img.example.com/cuddle.png',
+        });
+        expect(parseEmojiImportLine('摸摸头data:image/png;base64,AAAA')).toEqual({
+            name: '摸摸头',
+            url: 'data:image/png;base64,AAAA',
+        });
+    });
+
     it('rejects incomplete lines', () => {
         expect(parseEmojiImportLine('https://img.example.com/no-name.png')).toBeNull();
         expect(parseEmojiImportLine('没有链接：')).toBeNull();
