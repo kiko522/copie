@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BANK_CARD_STYLES, DEFAULT_BANK_CARD_STYLE_ID, XIA_YIZHOU_CALEB_CARD_STYLE_ID, XIA_YIZHOU_CARD_STYLE_ID } from './bankCardStyles';
+import { BANK_CARD_STYLES, DEFAULT_BANK_CARD_STYLE_ID, USER_CALEB_CARD_STYLE_ID, XIA_YIZHOU_CALEB_CARD_STYLE_ID, XIA_YIZHOU_CARD_STYLE_ID } from './bankCardStyles';
 
 describe('bank card styles', () => {
     it('keeps style ids unique and the default resolvable', () => {
@@ -17,5 +17,14 @@ describe('bank card styles', () => {
             expect(assetPaths).toHaveLength(4);
             expect(assetPaths.every(path => path.startsWith('/bank-cards/xia-yizhou/'))).toBe(true);
         }
+    });
+
+    it('uses the dedicated bundled assets for the user Caleb card', () => {
+        const style = BANK_CARD_STYLES.find(item => item.id === USER_CALEB_CARD_STYLE_ID);
+        expect(style?.artwork?.layout).toBe('user-suica-reference');
+        const assetPaths = Object.values(style?.artwork || {})
+            .filter((value): value is string => typeof value === 'string' && value.endsWith('.png'));
+        expect(assetPaths).toHaveLength(3);
+        expect(assetPaths.every(path => path.startsWith('/bank-cards/user/'))).toBe(true);
     });
 });

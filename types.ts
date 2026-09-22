@@ -1895,7 +1895,7 @@ export interface BankCardStyle {
     muted: string;
     /** 可选的收藏卡式分层素材；未配置时仍使用普通渐变卡面。 */
     artwork?: {
-        layout?: 'flightline' | 'caleb-reference';
+        layout?: 'flightline' | 'caleb-reference' | 'user-suica-reference';
         backgroundImage: string;
         portraitImage?: string;
         primarySignatureImage?: string;

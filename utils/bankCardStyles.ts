@@ -2,9 +2,13 @@ import { BankCardStyle } from '../types';
 
 export const XIA_YIZHOU_CARD_STYLE_ID = 'xia-yizhou-flightline';
 export const XIA_YIZHOU_CALEB_CARD_STYLE_ID = 'xia-yizhou-caleb-reference';
+export const USER_CALEB_CARD_STYLE_ID = 'user-caleb-suica';
 
 export const isXiaYizhouCardStyle = (styleId: string) =>
     styleId === XIA_YIZHOU_CARD_STYLE_ID || styleId === XIA_YIZHOU_CALEB_CARD_STYLE_ID;
+
+export const isVisaBankCardStyle = (styleId: string) =>
+    isXiaYizhouCardStyle(styleId) || styleId === USER_CALEB_CARD_STYLE_ID;
 
 /**
  * 本地虚拟卡面，不代表真实发卡机构；收藏联名版使用项目内授权素材分层渲染。
@@ -38,6 +42,19 @@ export const BANK_CARD_STYLES: BankCardStyle[] = [
             primarySignatureImage: '/bank-cards/xia-yizhou/signature-zh.png',
             secondarySignatureImage: '/bank-cards/xia-yizhou/signature-en.png',
             overlay: 'linear-gradient(90deg,rgba(2,9,25,.42) 0%,rgba(2,9,25,.08) 48%,rgba(2,9,25,.18) 100%)',
+        },
+    },
+    {
+        id: USER_CALEB_CARD_STYLE_ID,
+        name: 'User · Caleb 橙卡',
+        background: '#fffaf4',
+        foreground: '#ffffff',
+        muted: '#ffe2bd',
+        artwork: {
+            layout: 'user-suica-reference',
+            backgroundImage: '/bank-cards/user/caleb-suica-background.png',
+            portraitImage: '/bank-cards/user/caleb-mascot.png',
+            secondarySignatureImage: '/bank-cards/user/caleb-signature.png',
         },
     },
     { id: 'crimson-gold', name: '绛红鎏金', background: 'linear-gradient(135deg,#7f1d1d,#dc2626 56%,#f59e0b)', foreground: '#fff7ed', muted: '#fed7aa' },

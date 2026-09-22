@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bank, CreditCard, Palette, Plus, Trash } from '@phosphor-icons/react';
 import type { BankCard, BankCardStyle, CharacterProfile, UserProfile } from '../../types';
 import { DB } from '../../utils/db';
-import { BANK_CARD_STYLES, DEFAULT_BANK_CARD_STYLE_ID, isXiaYizhouCardStyle } from '../../utils/bankCardStyles';
+import { BANK_CARD_STYLES, DEFAULT_BANK_CARD_STYLE_ID, isVisaBankCardStyle, isXiaYizhouCardStyle, USER_CALEB_CARD_STYLE_ID } from '../../utils/bankCardStyles';
 import { formatMoney } from '../../utils/format';
 import Modal from '../os/Modal';
 
@@ -12,6 +12,28 @@ const CardArtwork: React.FC<{ style: BankCardStyle; preview?: boolean }> = ({ st
     if (!style.artwork) return null;
     const { artwork } = style;
     const isCalebReference = artwork.layout === 'caleb-reference';
+    const isUserSuicaReference = artwork.layout === 'user-suica-reference';
+
+    if (isUserSuicaReference) {
+        const outlineStyle = {
+            WebkitTextStroke: preview ? '0.65px #fff' : '1.3px #fff',
+            color: 'transparent',
+        };
+        return (
+            <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+                <img src={artwork.backgroundImage} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                {artwork.portraitImage && <img src={artwork.portraitImage} alt="" className={`absolute object-contain object-bottom ${preview ? 'bottom-[2%] right-[1%] h-[76%] w-[45%]' : 'bottom-[2%] right-[1%] h-[79%] w-[47%]'}`} />}
+                {artwork.secondarySignatureImage && <img src={artwork.secondarySignatureImage} alt="" className={`absolute right-[7%] top-[7%] object-contain ${preview ? 'w-[25%]' : 'w-[27%]'}`} />}
+                <div className={`absolute bottom-[5%] left-[5%] flex items-baseline leading-none tracking-[-0.04em] text-white drop-shadow-[0_1px_1px_rgba(122,54,0,.28)] ${preview ? 'text-[21px]' : 'text-[42px]'}`}>
+                    <span className="font-sans font-black">C</span>
+                    <span className="ml-[1px] font-serif font-normal" style={outlineStyle}>a</span>
+                    <span className="ml-[1px] font-sans font-black">l</span>
+                    <span className="ml-[1px] font-serif font-normal" style={outlineStyle}>e</span>
+                    <span className="ml-[1px] font-sans font-black">b</span>
+                </div>
+            </div>
+        );
+    }
 
     if (isCalebReference) {
         const outlineStyle = { WebkitTextStroke: preview ? '0.7px #fff' : '1.25px #fff', color: 'transparent' };
@@ -85,6 +107,11 @@ const BankCardWallet: React.FC<Props> = ({ characters, userProfile, addToast }) 
     const loadCards = useCallback(async () => setCards(await DB.getBankCards(ownerId)), [ownerId]);
     useEffect(() => { void loadCards(); }, [loadCards]);
 
+    const openCardForm = () => {
+        setStyleId(ownerId === 'user' ? USER_CALEB_CARD_STYLE_ID : DEFAULT_BANK_CARD_STYLE_ID);
+        setShowForm(true);
+    };
+
     const saveCard = async () => {
         const value = Number(balance);
         if (!nickname.trim() || !issuerName.trim() || !/^\d{4}$/.test(last4) || !Number.isFinite(value) || value < 0) {
@@ -94,7 +121,7 @@ const BankCardWallet: React.FC<Props> = ({ characters, userProfile, addToast }) 
         const now = Date.now();
         await DB.saveBankCard({
             id: makeId('card'), ownerId, nickname: nickname.trim(), issuerName: issuerName.trim(),
-            network: isXiaYizhouCardStyle(styleId) ? 'visa' : 'unionpay', last4, styleId, balance: value, currency: 'CNY',
+            network: isVisaBankCardStyle(styleId) ? 'visa' : 'unionpay', last4, styleId, balance: value, currency: 'CNY',
             isDefault: cards.length === 0, createdAt: now, updatedAt: now,
         });
         await loadCards();
@@ -119,7 +146,7 @@ const BankCardWallet: React.FC<Props> = ({ characters, userProfile, addToast }) 
         await DB.saveBankCard({
             ...stylingCard,
             styleId: nextStyleId,
-            network: isXiaYizhouCardStyle(nextStyleId) ? 'visa' : stylingCard.network,
+            network: isVisaBankCardStyle(nextStyleId) ? 'visa' : stylingCard.network,
             last4: isXiaYizhouCardStyle(nextStyleId) ? '0613' : stylingCard.last4,
             updatedAt: Date.now(),
         });
@@ -135,7 +162,7 @@ const BankCardWallet: React.FC<Props> = ({ characters, userProfile, addToast }) 
                     <div className="flex items-center gap-2 font-bold text-[#5D4037]"><CreditCard size={18} weight="fill" /> 卡包</div>
                     <div className="mt-0.5 text-[10px] text-[#A1887F]">每个人的卡和流水分别保存</div>
                 </div>
-                <button onClick={() => setShowForm(true)} className="flex items-center gap-1 rounded-xl bg-[#6D4C41] px-3 py-2 text-xs font-bold text-white active:scale-95">
+                <button onClick={openCardForm} className="flex items-center gap-1 rounded-xl bg-[#6D4C41] px-3 py-2 text-xs font-bold text-white active:scale-95">
                     <Plus size={14} weight="bold" /> 开卡
                 </button>
             </div>
@@ -149,7 +176,7 @@ const BankCardWallet: React.FC<Props> = ({ characters, userProfile, addToast }) 
             </div>
 
             {cards.length === 0 ? (
-                <button onClick={() => setShowForm(true)} className="flex w-full flex-col items-center rounded-2xl border-2 border-dashed border-[#D7CCC8] py-7 text-[#A1887F]">
+                <button onClick={openCardForm} className="flex w-full flex-col items-center rounded-2xl border-2 border-dashed border-[#D7CCC8] py-7 text-[#A1887F]">
                     <Bank size={28} /><span className="mt-2 text-xs font-bold">还没有银行卡，点这里开一张</span>
                 </button>
             ) : (
@@ -157,13 +184,14 @@ const BankCardWallet: React.FC<Props> = ({ characters, userProfile, addToast }) 
                     {cards.map(card => {
                         const style = BANK_CARD_STYLES.find(item => item.id === card.styleId) || BANK_CARD_STYLES[0];
                         const isCalebReference = style.artwork?.layout === 'caleb-reference';
+                        const isUserSuicaReference = style.artwork?.layout === 'user-suica-reference';
                         return <div key={card.id} className="relative aspect-[1.586/1] overflow-hidden rounded-2xl p-4 shadow-md" style={{ background: style.background, color: style.foreground }}>
                             <CardArtwork style={style} />
-                            {style.artwork && !isCalebReference && <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#020817]/70 via-transparent to-[#020817]/20" aria-hidden="true" />}
+                            {style.artwork && !isCalebReference && !isUserSuicaReference && <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#020817]/70 via-transparent to-[#020817]/20" aria-hidden="true" />}
                             <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-inset ring-white/20" aria-hidden="true" />
                             <div className="relative z-10 flex h-full flex-col justify-between">
-                            <div className="flex items-start justify-between gap-3">
-                                {isCalebReference ? <div /> : style.artwork ? (
+                            <div className={`flex items-start gap-3 ${isUserSuicaReference ? 'justify-start' : 'justify-between'}`}>
+                                {isCalebReference || isUserSuicaReference ? <div /> : style.artwork ? (
                                     <div className="drop-shadow-[0_2px_5px_rgba(0,0,0,.7)]">
                                         <div className="select-none text-[26px] font-black italic leading-none tracking-[-0.1em]" aria-label="Visa">VISA</div>
                                         <div className="mt-2 inline-flex items-baseline gap-1.5 rounded-lg bg-black/15 px-2 py-1 backdrop-blur-[2px]"><span className="text-[8px] opacity-70">余额</span><span className="text-sm font-black">¥{formatMoney(card.balance)}</span></div>
@@ -178,7 +206,13 @@ const BankCardWallet: React.FC<Props> = ({ characters, userProfile, addToast }) 
                                     <button onClick={() => void deleteCard(card)} aria-label="删除银行卡" className="rounded-full bg-black/25 p-1.5 backdrop-blur-sm"><Trash size={12} /></button>
                                 </div>
                             </div>
-                            {isCalebReference ? (
+                            {isUserSuicaReference ? (
+                                <div className="mb-[19%] inline-flex w-fit items-center gap-2 rounded-lg bg-white/75 px-2.5 py-1.5 text-[#9b4e08] shadow-sm backdrop-blur-[2px]">
+                                    <div className="text-[8px] font-black uppercase tracking-[0.2em]">VISA<br />•••• {card.last4}</div>
+                                    <div className="h-5 w-px bg-[#f5b05d]" />
+                                    <div><div className="text-[7px] opacity-70">可用余额</div><div className="text-sm font-black">¥{formatMoney(card.balance)}</div></div>
+                                </div>
+                            ) : isCalebReference ? (
                                 <div className="flex items-end justify-between text-white drop-shadow-[0_1px_2px_rgba(0,0,0,.28)]">
                                     <div className="text-[8px] font-bold uppercase tracking-[0.28em]"><div>VISA</div><div className="mt-1">•••• {card.last4}</div></div>
                                     <div className="rounded-lg bg-[#1789c4]/55 px-2 py-1 text-right backdrop-blur-[2px]"><div className="text-[7px] opacity-80">可用余额</div><div className="text-sm font-black">¥{formatMoney(card.balance)}</div></div>
