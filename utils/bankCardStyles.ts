@@ -1,12 +1,14 @@
 import { BankCardStyle } from '../types';
 
+export const XIA_YIZHOU_CARD_STYLE_ID = 'xia-yizhou-flightline';
+
 /**
  * 原创虚拟卡面种子。只借用常见金融配色，不复制任何真实银行卡版式或商标。
  * 后续增加卡面只需追加 style，不需要迁移用户已创建的银行卡。
  */
 export const BANK_CARD_STYLES: BankCardStyle[] = [
     {
-        id: 'xia-yizhou-flightline',
+        id: XIA_YIZHOU_CARD_STYLE_ID,
         name: '夏以昼 · 破晓航线',
         background: 'linear-gradient(135deg,#06152f,#0b3f9d 58%,#f28a22)',
         foreground: '#f8fbff',
