@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
+import { DELIVERY_MAX_PER_WINDOW, DELIVERY_MIN_INTERVAL_MS, DELIVERY_WINDOW_MS } from './delivery.mjs';
 
 export class CompanionStore {
   constructor(dataDir) {
@@ -35,6 +36,14 @@ export class CompanionStore {
         acked_at INTEGER
       );
       CREATE INDEX IF NOT EXISTS outbox_pending ON outbox(status, created_at);
+      CREATE TABLE IF NOT EXISTS delivery_intents (
+        id TEXT PRIMARY KEY,
+        char_id TEXT NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at INTEGER NOT NULL,
+        resolved_at INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS delivery_intents_char_time ON delivery_intents(char_id, created_at DESC);
     `);
     const characterColumns = this.db.prepare('PRAGMA table_info(characters)').all();
     if (!characterColumns.some((column) => column.name === 'heartbeat_enabled')) {
@@ -100,13 +109,14 @@ export class CompanionStore {
       snapshot.recentMessages = [];
       const deletedExperiences = this.db.prepare('DELETE FROM experiences WHERE char_id=?').run(id).changes;
       const deletedOutbox = this.db.prepare('DELETE FROM outbox WHERE char_id=?').run(id).changes;
+      const deletedDeliveryIntents = this.db.prepare('DELETE FROM delivery_intents WHERE char_id=?').run(id).changes;
       this.db.prepare(`
         UPDATE characters
         SET snapshot_json=?, updated_at=?, next_heartbeat_at=?, backoff_level=0, unanswered_sends=0
         WHERE id=?
       `).run(JSON.stringify(snapshot), now, now + 10 * 60_000, id);
       this.db.exec('COMMIT');
-      return { character: this.getCharacter(id), deletedExperiences, deletedOutbox };
+      return { character: this.getCharacter(id), deletedExperiences, deletedOutbox, deletedDeliveryIntents };
     } catch (error) {
       this.db.exec('ROLLBACK');
       throw error;
@@ -143,6 +153,59 @@ export class CompanionStore {
       this.db.exec('ROLLBACK');
       throw error;
     }
+  }
+
+  deliveryIntentsForCharacter(charId, since = 0) {
+    return this.db.prepare('SELECT * FROM delivery_intents WHERE char_id=? AND created_at>=? ORDER BY created_at')
+      .all(charId, since).map((row) => ({
+        id: row.id, charId: row.char_id, status: row.status,
+        createdAt: row.created_at, resolvedAt: row.resolved_at,
+      }));
+  }
+
+  enqueueDeliveryIntent(charId, content, intent, now = Date.now()) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const char = this.db.prepare('SELECT unanswered_sends FROM characters WHERE id=?').get(charId);
+      if (!char) throw Object.assign(new Error('角色不存在'), { status: 404 });
+      if (this.db.prepare("SELECT 1 FROM delivery_intents WHERE char_id=? AND status='pending' LIMIT 1").get(charId)) {
+        throw Object.assign(new Error('该角色已有待客户端确认的点单意图'), { status: 409 });
+      }
+      const recentPlaced = this.db.prepare("SELECT resolved_at FROM delivery_intents WHERE char_id=? AND status='placed' AND resolved_at>=? ORDER BY resolved_at DESC")
+        .all(charId, now - DELIVERY_WINDOW_MS);
+      if (recentPlaced.length >= DELIVERY_MAX_PER_WINDOW) {
+        throw Object.assign(new Error('该角色已达到滚动 24 小时点单上限'), { status: 409 });
+      }
+      if (recentPlaced[0] && now - recentPlaced[0].resolved_at < DELIVERY_MIN_INTERVAL_MS) {
+        throw Object.assign(new Error('该角色距离上一单还不到 6 小时'), { status: 409 });
+      }
+      const id = randomUUID();
+      const deliveryOrderIntent = { ...intent, intentId: id };
+      this.db.prepare('INSERT INTO delivery_intents (id,char_id,status,created_at) VALUES (?,?,?,?)')
+        .run(id, charId, 'pending', now);
+      this.db.prepare('INSERT INTO outbox (id,char_id,content,metadata_json,created_at) VALUES (?,?,?,?,?)')
+        .run(id, charId, content, JSON.stringify({ source: 'heartbeat', action: 'delivery_order', deliveryOrderIntent }), now);
+      this.db.prepare('UPDATE characters SET unanswered_sends=unanswered_sends+1 WHERE id=?').run(charId);
+      this.db.exec('COMMIT');
+      return { id, charId, content, metadata: { source: 'heartbeat', action: 'delivery_order', deliveryOrderIntent }, status: 'pending', createdAt: now };
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  resolveDeliveryIntent(id, status, now = Date.now()) {
+    if (!['placed', 'rejected'].includes(status)) throw Object.assign(new Error('点单结果无效'), { status: 400 });
+    const existing = this.db.prepare('SELECT * FROM delivery_intents WHERE id=?').get(id);
+    if (!existing) return null;
+    if (existing.status === 'pending') {
+      this.db.prepare('UPDATE delivery_intents SET status=?, resolved_at=? WHERE id=? AND status=?')
+        .run(status, now, id, 'pending');
+    } else if (existing.status !== status) {
+      throw Object.assign(new Error('点单意图已经以其他结果结束'), { status: 409 });
+    }
+    const row = this.db.prepare('SELECT * FROM delivery_intents WHERE id=?').get(id);
+    return { id: row.id, charId: row.char_id, status: row.status, createdAt: row.created_at, resolvedAt: row.resolved_at };
   }
 
   listOutbox(charId, limit = 50) {

@@ -7,10 +7,7 @@ import {
   ActiveMsg2Recurrence,
   ActiveMsg2TaskRecord,
   APIConfig,
-  BankCard,
   CharacterProfile,
-  CharacterDeliveryFrequency,
-  DeliveryAddress,
   GroupProfile,
   RealtimeConfig,
   UserProfile,
@@ -23,7 +20,6 @@ import { syncAmsgLlmCredentials } from '../../utils/amsgStateSync';
 import { disableScheduleCharPurge, purgeCharCloudState } from '../../utils/amsg2CharCleanup';
 import { buildUserCancelledNotices } from '../../utils/amsg2TaskContext';
 import { trackEvent } from '../../utils/analytics';
-import { DB } from '../../utils/db';
 import {
   applyRemoteTaskDelta,
   applyScheduledTask,
@@ -137,12 +133,6 @@ const ActiveMsg2SettingsModal: React.FC<ActiveMsg2SettingsModalProps> = ({
   }> | null>(null);
   // 防穿帮闸最近一次跳过的记录（worker 写的）。null = 没有记录 / 没读到。
   const [lastSkip, setLastSkip] = useState<AmsgLastSkip | null>(null);
-  const [deliveryOn, setDeliveryOn] = useState(saved?.deliveryAutonomy?.enabled === true);
-  const [deliveryCardId, setDeliveryCardId] = useState(saved?.deliveryAutonomy?.cardId ?? '');
-  const [deliveryAddressIds, setDeliveryAddressIds] = useState<string[]>(saved?.deliveryAutonomy?.allowedAddressIds ?? []);
-  const [deliveryFrequency, setDeliveryFrequency] = useState<CharacterDeliveryFrequency>(saved?.deliveryAutonomy?.frequency ?? 'normal');
-  const [deliveryCards, setDeliveryCards] = useState<BankCard[]>([]);
-  const [deliveryAddresses, setDeliveryAddresses] = useState<DeliveryAddress[]>([]);
 
   // 表单值重置：面板打开或切换编辑对象时，用被编辑任务的字段填表单（新建则填默认值）。
   // 角色级共享设置（maxTokens / 单独 API）始终跟随保存值。
@@ -161,10 +151,6 @@ const ActiveMsg2SettingsModal: React.FC<ActiveMsg2SettingsModalProps> = ({
     setSecUrl(config?.secondaryApi?.baseUrl ?? '');
     setSecKey(config?.secondaryApi?.apiKey ?? '');
     setSecModel(config?.secondaryApi?.model ?? '');
-    setDeliveryOn(config?.deliveryAutonomy?.enabled === true);
-    setDeliveryCardId(config?.deliveryAutonomy?.cardId ?? '');
-    setDeliveryAddressIds(config?.deliveryAutonomy?.allowedAddressIds ?? []);
-    setDeliveryFrequency(config?.deliveryAutonomy?.frequency ?? 'normal');
 
     const editing = editingTaskUuid ? list.find((t) => t.taskUuid === editingTaskUuid) : undefined;
     if (editing) {
@@ -183,18 +169,6 @@ const ActiveMsg2SettingsModal: React.FC<ActiveMsg2SettingsModalProps> = ({
       setExpirePolicy('expire');
     }
   }, [isOpen, char.id, char.activeMsg2Config, editingTaskUuid]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    void Promise.all([DB.getBankCards(char.id), DB.getDeliveryAddresses()]).then(([cards, addresses]) => {
-      setDeliveryCards(cards);
-      // 用户自己的地址可以授权给角色代点；角色地址只能看见自己的，不能跨角色借用。
-      setDeliveryAddresses(addresses.filter((address) => address.ownerId === 'user' || address.ownerId === char.id));
-    }).catch(() => {
-      setDeliveryCards([]);
-      setDeliveryAddresses([]);
-    });
-  }, [isOpen, char.id]);
 
   // 打开面板时的 push 状态检查 + 远端对账（只随 isOpen / 角色变化跑，不随编辑对象重复请求）。
   useEffect(() => {
@@ -281,12 +255,6 @@ const ActiveMsg2SettingsModal: React.FC<ActiveMsg2SettingsModalProps> = ({
     secondaryApi: useSecondaryApi && secUrl
       ? { baseUrl: secUrl.trim(), apiKey: secKey.trim(), model: secModel.trim() }
       : undefined,
-    deliveryAutonomy: {
-      enabled: deliveryOn,
-      cardId: deliveryCardId || undefined,
-      allowedAddressIds: deliveryAddressIds,
-      frequency: deliveryFrequency,
-    },
     lastSyncedAt: prev?.lastSyncedAt,
     ...extra,
   });
@@ -325,28 +293,6 @@ const ActiveMsg2SettingsModal: React.FC<ActiveMsg2SettingsModalProps> = ({
       // 开着存 undefined（= 跟随全局默认开），只有显式关掉才落 false。
       instantChatEnabled: next ? undefined : false,
     }));
-  };
-
-  const handleSaveDeliveryAutonomy = () => {
-    if (deliveryOn && !deliveryCardId) {
-      addToast(`请先在存钱罐里给 ${char.name} 开一张卡，并在这里选中。`, 'error');
-      return;
-    }
-    if (deliveryOn && deliveryAddressIds.length === 0) {
-      addToast('至少勾选一个允许角色使用的收货地址。', 'error');
-      return;
-    }
-    onSave((prev) => ({
-      ...(prev ?? { enabled: false, tasks: [] }),
-      deliveryAutonomy: {
-        enabled: deliveryOn,
-        cardId: deliveryCardId || undefined,
-        allowedAddressIds: deliveryAddressIds,
-        frequency: deliveryFrequency,
-      },
-    }));
-    trackEvent('保存角色自主点外卖', { action: deliveryOn ? '开' : '关', frequency: deliveryFrequency });
-    addToast(deliveryOn ? '自主点外卖授权已保存。' : '自主点外卖已关闭。', 'success');
   };
 
   /**
@@ -603,57 +549,6 @@ const ActiveMsg2SettingsModal: React.FC<ActiveMsg2SettingsModalProps> = ({
           >
             <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-all duration-200 ${globalInstantChatOn && instantChatOn ? 'translate-x-5' : 'translate-x-0'}`} />
           </button>
-        </div>
-
-        <div className="rounded-2xl border border-orange-100 bg-orange-50/60 p-4 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="font-bold text-slate-700">角色自主点外卖</div>
-              <div className="mt-1 text-xs leading-relaxed text-slate-500">云端只提点单意图；这台设备确认卡、地址、余额、商品与冷却后才会真正扣款。</div>
-            </div>
-            <button
-              onClick={() => setDeliveryOn((value) => !value)}
-              className={`w-12 h-7 rounded-full transition-colors relative shrink-0 ${deliveryOn ? 'bg-orange-500' : 'bg-slate-200'}`}
-            >
-              <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-all duration-200 ${deliveryOn ? 'translate-x-5' : 'translate-x-0'}`} />
-            </button>
-          </div>
-          {deliveryOn ? (
-            <>
-              <label className="block text-xs font-bold text-slate-600">角色付款卡
-                <select value={deliveryCardId} onChange={(event) => setDeliveryCardId(event.target.value)} className="mt-1.5 w-full rounded-xl border border-orange-100 bg-white px-3 py-3 text-sm">
-                  <option value="">请选择 {char.name} 的银行卡</option>
-                  {deliveryCards.map((card) => <option key={card.id} value={card.id}>{card.nickname} · {card.last4}（余额 ¥{card.balance.toFixed(2)}）</option>)}
-                </select>
-              </label>
-              {deliveryCards.length === 0 ? <p className="text-[11px] text-orange-600">这个角色还没有银行卡，请先去“存钱罐 → 银行卡”开卡。</p> : null}
-              <div>
-                <div className="text-xs font-bold text-slate-600">允许使用的已知地址</div>
-                <div className="mt-2 space-y-2">
-                  {deliveryAddresses.map((address) => {
-                    const checked = deliveryAddressIds.includes(address.id);
-                    const ownerName = address.ownerId === 'user'
-                      ? (userProfile.name || '我')
-                      : (address.ownerId === char.id ? char.name : '其他角色');
-                    return <label key={address.id} className={`flex items-start gap-2 rounded-xl border p-3 bg-white ${checked ? 'border-orange-300' : 'border-slate-100'}`}>
-                      <input type="checkbox" checked={checked} onChange={() => setDeliveryAddressIds((ids) => checked ? ids.filter((id) => id !== address.id) : [...ids, address.id])} className="mt-0.5 accent-orange-500" />
-                      <span className="min-w-0"><span className="block text-xs font-bold text-slate-700">{address.label} · {ownerName}</span><span className="mt-0.5 block truncate text-[10px] text-slate-400">{address.addressLine}</span></span>
-                    </label>;
-                  })}
-                  {deliveryAddresses.length === 0 ? <p className="text-[11px] text-orange-600">还没有已知地址，请先在“外卖”App 里添加。</p> : null}
-                </div>
-              </div>
-              <label className="block text-xs font-bold text-slate-600">发生倾向
-                <select value={deliveryFrequency} onChange={(event) => setDeliveryFrequency(event.target.value as CharacterDeliveryFrequency)} className="mt-1.5 w-full rounded-xl border border-orange-100 bg-white px-3 py-3 text-sm">
-                  <option value="rare">很少发生</option>
-                  <option value="normal">自然偶发</option>
-                  <option value="often">相对主动</option>
-                </select>
-              </label>
-              <p className="text-[11px] leading-relaxed text-slate-400">无论选哪档，每个角色仍是滚动 24 小时最多 2 单、两单至少间隔 6 小时；这是安全上限，不是每日目标。</p>
-            </>
-          ) : null}
-          <button onClick={handleSaveDeliveryAutonomy} className="w-full rounded-xl bg-orange-500 py-2.5 text-xs font-bold text-white">保存点外卖授权</button>
         </div>
 
         {/* 闸拦下一次触发时不发任何推送，远端那行任务却照样被消费掉——不说一声的话，

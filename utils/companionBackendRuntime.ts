@@ -5,9 +5,11 @@ import {
   loadCompanionBackendConfig,
   notifyCompanionUserReply,
   pullCompanionOutbox,
+  reportCompanionDeliveryIntentResult,
   syncCompanionCharacter,
   type CompanionOutboxItem,
 } from './companionBackendClient';
+import { buildDeliveryConfirmationCard, executeCharacterDeliveryIntent } from './deliveryAutonomy';
 
 export const COMPANION_USER_MESSAGE_SAVED = 'sully:companion-user-message-saved';
 
@@ -40,12 +42,53 @@ const deliver = async (item: CompanionOutboxItem): Promise<boolean> => {
       companionHeartbeat: true,
     },
   });
+  const deliveryIntent = item.metadata.deliveryOrderIntent;
+  let notificationBody = item.content;
+  if (deliveryIntent?.type === 'delivery_order') {
+    const result = await executeCharacterDeliveryIntent(char, {
+      ...deliveryIntent,
+      // 后端 outbox 主键才是信任边界内的稳定幂等键，忽略载荷里可能伪造的值。
+      intentId: item.id,
+    });
+    if (result.status === 'placed') {
+      const card = buildDeliveryConfirmationCard(result.order);
+      await DB.saveMessageOnce(`companion-delivery-result:${item.id}`, {
+        charId: item.charId,
+        role: 'assistant',
+        type: 'html_card',
+        content: card.preview,
+        timestamp: item.createdAt + 1,
+        metadata: {
+          source: 'companion-backend',
+          companionHeartbeat: true,
+          htmlSource: card.html,
+          htmlTextPreview: card.preview,
+          commerceOrderId: result.order.id,
+          deliveryIntentId: item.id,
+        },
+      });
+      notificationBody = card.preview;
+      await reportCompanionDeliveryIntentResult(item.id, 'placed');
+    } else {
+      const rejected = `[自动点单未完成：${result.reason}]`;
+      await DB.saveMessageOnce(`companion-delivery-result:${item.id}`, {
+        charId: item.charId,
+        role: 'system',
+        type: 'text',
+        content: rejected,
+        timestamp: item.createdAt + 1,
+        metadata: { source: 'companion-backend', companionHeartbeat: true, deliveryIntentId: item.id },
+      });
+      notificationBody = rejected;
+      await reportCompanionDeliveryIntentResult(item.id, 'rejected');
+    }
+  }
   await ackCompanionOutbox(item.id);
   window.dispatchEvent(new CustomEvent('active-msg-received', {
     detail: {
       charId: char.id,
       charName: char.name,
-      body: item.content,
+      body: notificationBody,
       avatarUrl: char.avatar,
       sentAt: item.createdAt,
     },

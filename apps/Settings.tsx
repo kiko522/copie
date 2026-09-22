@@ -3251,7 +3251,7 @@ const Settings: React.FC = () => {
             title="个人陪伴后端"
             icon={<div className="p-2 bg-teal-100/60 rounded-xl text-teal-600"><PlugsConnected size={16} /></div>}
         >
-            <CompanionBackendPanel addToast={addToast} />
+            <CompanionBackendPanel addToast={addToast} characters={characters} updateCharacter={updateCharacter} />
         </SettingsSection>
 
         {/* VAPID 公私钥：主动消息 2.0 部署 Worker 时用的就是这一对（一键部署自动沿用，手动部署照着填 env）。 */}

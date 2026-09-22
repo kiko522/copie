@@ -61,12 +61,20 @@ test('authenticated character snapshot and outbox API', async () => {
     assert.equal(outbox.items[0].content, '测试主动消息');
     const acked = await fetch(`${base}/v1/outbox/${outbox.items[0].id}/ack`, { method: 'POST', headers });
     assert.equal(acked.status, 200);
+    const delivery = store.enqueueDeliveryIntent('c1', '等待手机确认', {
+      type: 'delivery_order', addressId: 'home', storeId: 'tea', items: [{ productId: 'milk-tea', quantity: 1 }],
+    });
+    const deliveryResult = await (await fetch(`${base}/v1/delivery-intents/${delivery.id}/result`, {
+      method: 'POST', headers, body: JSON.stringify({ status: 'placed' }),
+    })).json();
+    assert.equal(deliveryResult.status, 'placed');
     store.appendExperience('c1', 'read_trend', { experience: '测试经历' });
     store.enqueue('c1', '另一条测试消息');
     const cleared = await (await fetch(`${base}/v1/characters/c1/history`, { method: 'DELETE', headers })).json();
     assert.equal(cleared.ok, true);
     assert.equal(cleared.deletedExperiences, 1);
-    assert.equal(cleared.deletedOutbox, 2);
+    assert.equal(cleared.deletedOutbox, 3);
+    assert.equal(cleared.deletedDeliveryIntents, 1);
     assert.deepEqual(store.getCharacter('c1').snapshot.recentMessages, []);
     assert.equal(store.getCharacter('c1').heartbeatEnabled, false);
     assert.equal(store.getCharacter('c1').unansweredSends, 0);

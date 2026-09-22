@@ -326,29 +326,6 @@ describe('classifyLLMOutput — LIFE / NEWS_CARD', () => {
   });
 });
 
-describe('classifyLLMOutput — 角色自主点外卖', () => {
-  it('只结构化地址、店铺和商品意图，并从正文剥掉标签', () => {
-    const result = classifyLLMOutput('我试着给你点一份，等手机确认。\n[[DELIVERY_ORDER|addr-1|warm-kitchen|tomato-beef-rice*1,pork-dumplings*2]]');
-    expect(result).toMatchObject({
-      kind: 'finish',
-      cleanedText: '我试着给你点一份，等手机确认。',
-      directives: [{
-        type: 'delivery_order', addressId: 'addr-1', storeId: 'warm-kitchen',
-        items: [
-          { productId: 'tomato-beef-rice', quantity: 1 },
-          { productId: 'pork-dumplings', quantity: 2 },
-        ],
-      }],
-    });
-  });
-
-  it('商品数量语法坏掉时不产生可执行意图', () => {
-    const result = classifyLLMOutput('先等等。[[DELIVERY_ORDER|addr-1|warm-kitchen|tomato-beef-rice*很多]]');
-    expect(result.kind).toBe('finish');
-    if (result.kind === 'finish') expect(result.directives).toEqual([]);
-  });
-});
-
 // 复述型模型经常把整条消息重写一遍 (先说一遍再"总结"一遍), 同一个标签就出现两次。
 // 客户端重放不去重, 放过去就是同一笔钱转两次账。
 describe('classifyLLMOutput — 同一条消息里重复的副作用只出一个 directive', () => {

@@ -419,11 +419,6 @@ export interface ActiveMsg2CharacterConfig {
    * 可以只排程不即时，也可以只即时不排程。
    */
   instantChatEnabled?: boolean;
-  /**
-   * 角色自主点外卖的本地授权。云端只会产出商品/地址的结构化意图；真正的卡归属、
-   * 地址白名单、余额、冷却和目录价格仍由客户端在结账前复核。
-   */
-  deliveryAutonomy?: CharacterDeliveryAutonomyConfig;
   /** 多任务清单（用户在面板建的和角色用工具建的并存），见 utils/amsg2Tasks.ts。 */
   tasks?: ActiveMsg2TaskRecord[];
   /** ↓ 角色级共享设置（所有任务共用）。 */
@@ -2673,6 +2668,11 @@ export interface CharacterProfile {
 
   // 情绪Buff系统
   activeMsg2Config?: ActiveMsg2CharacterConfig;
+  /**
+   * 角色心跳可选的自主点外卖授权。它不依赖主动消息 2.0；VPS 只提出结构化意图，
+   * 卡归属、地址白名单、余额、冷却和目录价格均由当前设备在结账前复核。
+   */
+  deliveryAutonomy?: CharacterDeliveryAutonomyConfig;
   activeBuffs?: CharacterBuff[];
   buffInjection?: string;   // 注入到systemPrompt的叙事型情绪底色描述
   emotionConfig?: {

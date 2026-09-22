@@ -1,6 +1,9 @@
 import type { CharacterProfile, Message } from '../types';
 import { DB } from './db';
 import { resolveCharTimeZone } from './timezone';
+import { getDailyScheduleForChar } from './dailySchedule';
+import { DELIVERY_STORES } from './deliveryCatalog';
+import { collectRecentFoodWishSignals, getCharacterDeliveryAutonomy, type CharacterDeliveryIntent } from './deliveryAutonomy';
 
 export interface CompanionBackendConfig {
   enabled: boolean;
@@ -12,7 +15,7 @@ export interface CompanionOutboxItem {
   id: string;
   charId: string;
   content: string;
-  metadata: Record<string, unknown>;
+  metadata: Record<string, unknown> & { deliveryOrderIntent?: CharacterDeliveryIntent };
   createdAt: number;
 }
 
@@ -101,9 +104,36 @@ const messageText = (message: Message) => ({
  * 上传心跳真正需要的最小角色快照。媒体、头像、工具凭据、角色级 API、完整记忆库都不上传。
  */
 export const syncCompanionCharacter = async (char: CharacterProfile): Promise<void> => {
-  const messages = await DB.getMessagesByCharId(char.id);
+  const [messages, schedule, addresses, cards, orders] = await Promise.all([
+    DB.getMessagesByCharId(char.id),
+    getDailyScheduleForChar(char),
+    DB.getDeliveryAddresses(),
+    DB.getBankCards(char.id),
+    DB.getCommerceOrders({ payerOwnerId: char.id, type: 'delivery' }),
+  ]);
   const persona = [char.description, char.systemPrompt, char.worldview]
     .filter(Boolean).join('\n\n').slice(0, 40_000);
+  const config = getCharacterDeliveryAutonomy(char);
+  const allowedAddresses = addresses
+    .filter((address) => config?.allowedAddressIds?.includes(address.id))
+    .filter((address) => address.ownerId === 'user' || address.ownerId === char.id)
+    .map((address) => ({ id: address.id, recipient: address.ownerId === 'user' ? 'user' : 'character', label: address.label.slice(0, 80) }));
+  const selectedCardExists = Boolean(config?.cardId && cards.some((card) => card.id === config.cardId));
+  const deliveryAutonomy = config?.enabled && selectedCardExists && allowedAddresses.length > 0 ? {
+    enabled: true,
+    paymentReady: true,
+    frequency: config.frequency ?? 'normal',
+    allowedAddresses,
+    recentWishes: collectRecentFoodWishSignals(messages),
+    recentPlacedAt: orders
+      .filter((order) => order.source === 'llm' && order.paymentStatus === 'paid' && Date.now() - order.createdAt < 24 * 60 * 60_000)
+      .map((order) => order.createdAt),
+    catalog: DELIVERY_STORES.map((store) => ({
+      id: store.id, name: store.name, category: store.category,
+      minimumOrder: store.minimumOrder, deliveryFee: store.deliveryFee,
+      products: store.products.map((product) => ({ id: product.id, name: product.name, price: product.price })),
+    })),
+  } : { enabled: false, paymentReady: false };
   await request(`/v1/characters/${encodeURIComponent(char.id)}`, {
     method: 'PUT',
     body: JSON.stringify({
@@ -112,6 +142,15 @@ export const syncCompanionCharacter = async (char: CharacterProfile): Promise<vo
       interests: [],
       timeZone: resolveCharTimeZone(char) || Intl.DateTimeFormat().resolvedOptions().timeZone,
       recentMessages: messages.slice(-30).map(messageText),
+      schedule: schedule ? {
+        date: schedule.date,
+        slots: schedule.slots.slice(0, 48).map((slot) => ({
+          startTime: slot.startTime, activity: slot.activity, description: slot.description,
+          location: slot.location, innerThought: slot.innerThought,
+        })),
+        flowNarrative: schedule.flowNarrative,
+      } : null,
+      deliveryAutonomy,
     }),
   });
 };
@@ -131,6 +170,14 @@ export const pullCompanionOutbox = async (charId?: string): Promise<CompanionOut
 /** 只有调用方已成功写入现有聊天数据库后才确认，防止网络抖动导致消息丢失。 */
 export const ackCompanionOutbox = async (id: string): Promise<void> => {
   await request(`/v1/outbox/${encodeURIComponent(id)}/ack`, { method: 'POST' });
+};
+
+/** 告诉 VPS 本次结构化点单意图是否通过本地最终闸门；重复上报保持幂等。 */
+export const reportCompanionDeliveryIntentResult = async (id: string, status: 'placed' | 'rejected'): Promise<void> => {
+  await request(`/v1/delivery-intents/${encodeURIComponent(id)}/result`, {
+    method: 'POST',
+    body: JSON.stringify({ status }),
+  });
 };
 
 export const testCompanionBackend = async (): Promise<{ ok: boolean; service: string; version: string }> => {
@@ -162,6 +209,7 @@ export const setCompanionCharacterHeartbeatEnabled = async (charId: string, enab
 export const clearCompanionCharacterHistory = async (charId: string): Promise<{
   deletedExperiences: number;
   deletedOutbox: number;
+  deletedDeliveryIntents?: number;
 }> => request(`/v1/characters/${encodeURIComponent(charId)}/history`, { method: 'DELETE' });
 
 /**

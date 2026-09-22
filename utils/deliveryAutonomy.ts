@@ -1,10 +1,4 @@
-import type {
-  CharacterDeliveryAutonomyConfig,
-  CharacterProfile,
-  CommerceOrder,
-  DeliveryAddress,
-  Message,
-} from '../types';
+import type { CharacterDeliveryAutonomyConfig, CharacterProfile, CommerceOrder, Message } from '../types';
 import { DB } from './db';
 import { CommerceError } from './commerce';
 import { DELIVERY_STORES, findDeliveryStore } from './deliveryCatalog';
@@ -28,75 +22,46 @@ export type CharacterDeliveryResult =
   | { status: 'rejected'; reason: string };
 
 const FOOD_WISH_RE = /(想吃|想喝|好想吃|好想喝|有点饿|饿了|馋|夜宵|早餐|早饭|午饭|晚饭|奶茶|咖啡|吃什么|喝什么)/i;
+const FOOD_WISH_CANCEL_RE = /(算了|不用点|别点|不要点|不想吃|不想喝|刚吃过|吃过了|喝过了|不饿|不用买|不要了)/i;
 
 const messageText = (message: Message): string => {
   if (typeof message.content === 'string') return message.content;
   return '';
 };
 
-/** 只摘最近 90 分钟里用户明确表达过的饮食愿望，不把整段聊天再复制一遍。 */
-export const collectRecentFoodWishes = (
-  messages: Message[],
-  now = Date.now(),
-): string[] => messages
-  .filter((message) => message.role === 'user'
-    && now - Number(message.timestamp || 0) >= 0
-    && now - Number(message.timestamp || 0) <= 90 * 60_000)
-  .map(messageText)
-  .map((text) => text.replace(/\s+/g, ' ').trim())
-  .filter((text) => text.length > 0 && FOOD_WISH_RE.test(text))
-  .slice(-4)
-  .map((text) => text.slice(0, 180));
-
-const frequencyCopy = (frequency: CharacterDeliveryAutonomyConfig['frequency']): string => {
-  if (frequency === 'rare') return '非常偶尔；没有强动机就不要点。';
-  if (frequency === 'often') return '可以相对主动，但仍必须像真实生活里的偶发决定，绝不是每日任务。';
-  return '自然、克制地偶尔发生；没有合适契机就不要点。';
-};
+export interface RecentFoodWishSignal { id: string; text: string; timestamp: number }
 
 /**
- * 随 fire_pack 烤进去的授权说明。它只给云端「可选什么」，不带银行卡、余额或详细地址；
- * 那些敏感且会变化的事实只在客户端结账闸门里读取。
+ * 只摘最近 90 分钟里用户明确表达过、且没有被后续取消的饮食愿望。
+ * VPS 只会拿到这些短信号，不会因此获得完整聊天记录以外的敏感资料。
  */
-export const buildDeliveryAutonomyPrompt = (input: {
-  config: CharacterDeliveryAutonomyConfig | undefined;
-  addresses: DeliveryAddress[];
-  recentWishes: string[];
-}): string => {
-  const config = input.config;
-  if (!config?.enabled || !config.cardId || !config.allowedAddressIds?.length) return '';
-  const allowed = input.addresses
-    .filter((address) => config.allowedAddressIds.includes(address.id))
-    .map((address) => ({ id: address.id, recipient: address.ownerId === 'user' ? 'user' : 'character', label: address.label }));
-  if (allowed.length === 0) return '';
-
-  const catalog = DELIVERY_STORES.map((store) => ({
-    id: store.id,
-    name: store.name,
-    category: store.category,
-    minimumOrder: store.minimumOrder,
-    deliveryFee: store.deliveryFee,
-    products: store.products.map((product) => ({ id: product.id, name: product.name, price: product.price })),
-  }));
-  const wishes = input.recentWishes.length > 0 ? input.recentWishes : ['（最近 90 分钟没有明确说想吃或想喝什么）'];
-
-  return [
-    '',
-    '【可选能力：自主点外卖】',
-    `使用倾向：${frequencyCopy(config.frequency)}`,
-    '这是一项可选的生活动作，不是每天必须完成的任务，也不是提醒用户按点吃饭。综合你当前的生活轨迹、日程、正在做的事、人设和最近对话，只有真的自然时才使用。',
-    '早餐场景的主动倾向要低于夜宵；不要机械催早餐、午饭或晚饭。用户最近 90 分钟明确说过想吃/想喝，是重要但非强制的信号。',
-    `最近 90 分钟饮食表达：${JSON.stringify(wishes)}`,
-    `本次可选地址（只有匿名 ID/归属/标签）：${JSON.stringify(allowed)}`,
-    `本地稳定菜单：${JSON.stringify(catalog)}`,
-    '若你决定点单：必须从上面的 ID 中选 1 个地址、1 家店和商品，满足该店起送价，并在正文末尾额外输出：',
-    '[[DELIVERY_ORDER|地址ID|店铺ID|商品ID*数量,商品ID*数量]]',
-    '一次最多输出一个点单意图。不要自行编 ID、价格、优惠、地址或银行卡信息。',
-    '这条标签只是提交意图，客户端还会检查授权、地址、角色银行卡、余额、24 小时上限、6 小时间隔和商品目录。',
-    '因此正文只能说“想给你点/我试着下单/等客户端确认”之类的未完成语气；绝不能在标签旁宣称已经下单、已付款、商家已接单或正在配送。客户端确认成功后会另发订单卡片。',
-    '如果不点单，完全不要提这项能力，也不要输出标签。',
-  ].join('\n');
+export const collectRecentFoodWishSignals = (
+  messages: Message[],
+  now = Date.now(),
+): RecentFoodWishSignal[] => {
+  const recent = messages
+    .filter((message) => message.role === 'user'
+    && now - Number(message.timestamp || 0) >= 0
+    && now - Number(message.timestamp || 0) <= 90 * 60_000)
+    .map((message, index) => ({
+      id: String((message as Message & { id?: string | number }).id ?? `${message.timestamp}-${index}`),
+      text: messageText(message).replace(/\s+/g, ' ').trim(),
+      timestamp: Number(message.timestamp || 0),
+    }));
+  const lastCancellation = recent.reduce((latest, row) => FOOD_WISH_CANCEL_RE.test(row.text) ? Math.max(latest, row.timestamp) : latest, -1);
+  return recent
+    .filter((row) => row.timestamp > lastCancellation && row.text.length > 0 && FOOD_WISH_RE.test(row.text) && !FOOD_WISH_CANCEL_RE.test(row.text))
+    .slice(-4)
+    .map((row) => ({ ...row, text: row.text.slice(0, 180) }));
 };
+
+export const collectRecentFoodWishes = (messages: Message[], now = Date.now()): string[] =>
+  collectRecentFoodWishSignals(messages, now).map((row) => row.text);
+
+/** 兼容极短暂的旧版嵌套存储；新写入一律落在角色顶层，与主动消息 2.0 解耦。 */
+export const getCharacterDeliveryAutonomy = (char: CharacterProfile): CharacterDeliveryAutonomyConfig | undefined =>
+  char.deliveryAutonomy
+  ?? (char.activeMsg2Config as (typeof char.activeMsg2Config & { deliveryAutonomy?: CharacterDeliveryAutonomyConfig }) | undefined)?.deliveryAutonomy;
 
 const reject = (reason: string): CharacterDeliveryResult => ({ status: 'rejected', reason });
 
@@ -112,7 +77,7 @@ export const executeCharacterDeliveryIntent = async (
   intent: CharacterDeliveryIntent,
   now = Date.now(),
 ): Promise<CharacterDeliveryResult> => {
-  const config = char.activeMsg2Config?.deliveryAutonomy;
+  const config = getCharacterDeliveryAutonomy(char);
   if (!config?.enabled) return reject('这个角色没有开启自主点外卖');
   if (!intent.intentId || !intent.addressId || !intent.storeId || !Array.isArray(intent.items)) {
     return reject('点单意图缺少必要字段');

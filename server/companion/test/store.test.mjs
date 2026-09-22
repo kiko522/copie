@@ -27,11 +27,21 @@ test('character, append-only experience, outbox and reply reset round-trip', () 
     assert.equal(store.dueCharacters(68_000)[0].id, 'c1');
     store.appendExperience('c1', 'life', { text: '测试经历' }, 9000);
     store.enqueue('c1', '测试待发消息', {}, 10_000);
+    const delivery = store.enqueueDeliveryIntent('c1', '等待手机确认', {
+      type: 'delivery_order', addressId: 'home', storeId: 'tea', items: [{ productId: 'milk-tea', quantity: 1 }],
+    }, 10_500);
+    assert.equal(store.deliveryIntentsForCharacter('c1')[0].status, 'pending');
+    assert.throws(() => store.enqueueDeliveryIntent('c1', '重复意图', {
+      type: 'delivery_order', addressId: 'home', storeId: 'tea', items: [{ productId: 'milk-tea', quantity: 1 }],
+    }, 10_550), /待客户端确认/);
+    assert.equal(store.resolveDeliveryIntent(delivery.id, 'placed', 10_600).status, 'placed');
+    assert.equal(store.resolveDeliveryIntent(delivery.id, 'placed', 10_700).status, 'placed');
     store.upsertCharacter('c1', { name: '小满', persona: '安静', recentMessages: [{ role: 'user', content: '测试' }] }, 11_000);
     store.setHeartbeatEnabled('c1', false, 12_000);
     const cleared = store.clearCharacterHistory('c1', 13_000);
     assert.equal(cleared.deletedExperiences, 2);
-    assert.equal(cleared.deletedOutbox, 3);
+    assert.equal(cleared.deletedOutbox, 4);
+    assert.equal(cleared.deletedDeliveryIntents, 1);
     assert.deepEqual(cleared.character.snapshot.recentMessages, []);
     assert.equal(cleared.character.snapshot.persona, '安静');
     assert.equal(cleared.character.heartbeatEnabled, false);

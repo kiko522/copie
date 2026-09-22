@@ -208,25 +208,6 @@ export function attachSceneSong(
   return directives.map((d) => (d.type === 'music_action' ? { ...d, song: sceneSong } : d));
 }
 
-/**
- * 点单幂等键不交给模型生成：同一任务同一次 occurrence 在 fire 重试、push 重放时必须
- * 得到同一个值，客户端才能用订单主键把重复扣款挡在事务外。
- */
-export function attachDeliveryIntentId(
-  directives: Directive[],
-  taskId: string | null,
-  occurrenceMs: number,
-): Directive[] {
-  const baseId = `${taskId || 'task-missing'}-${Math.trunc(occurrenceMs)}`;
-  let deliveryIndex = 0;
-  return directives.map((directive) => {
-    if (directive.type !== 'delivery_order') return directive;
-    const intentId = `${baseId}-${deliveryIndex}`;
-    deliveryIndex += 1;
-    return { ...directive, intentId };
-  });
-}
-
 export type RoundDecision =
   | { decision: 'tool-request'; toolCalls: ToolCall[] }
   | { decision: 'finish'; pushPayloads: Array<Record<string, unknown>> }
@@ -448,10 +429,10 @@ export function processLLMRound(
   const finalScan = fullText === scanText ? result : classifyLLMOutput(fullText);
   const cleanedText = finalScan.kind === 'finish' ? finalScan.cleanedText : finalScan.prefix;
   // 角色写了 MUSIC_ACTION 的话，把 prompt 里那句「你此刻在听」的那首歌冻进去（见 attachSceneSong）。
-  const directives = attachDeliveryIntentId(attachSceneSong(
+  const directives = attachSceneSong(
     finalScan.kind === 'finish' ? finalScan.directives : [],
     build.sceneSong,
-  ), build.taskId, build.occurrenceMs);
+  );
 
   // XHS 引用的笔记/token 与 directives 挂同一条 push（最后一条），客户端先落库再重放。
   // 笔记列表优先用「说要分享那一轮」定格的快照，没定格过（分享和搜索同一轮或压根没搜过）

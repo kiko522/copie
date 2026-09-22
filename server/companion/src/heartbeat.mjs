@@ -2,14 +2,16 @@ import { quietDelayMs } from './quiet-hours.mjs';
 import { callHeartbeatModel } from './llm.mjs';
 import { searchTavily } from './tavily.mjs';
 import { fetchTrendRadar } from './trendradar.mjs';
+import { buildPendingDeliveryMessage, evaluateDeliveryEligibility, normalizeDeliveryIntent, DELIVERY_WINDOW_MS } from './delivery.mjs';
 
 const clampMinutes = (value, fallback = 60) => Math.min(360, Math.max(15, Number(value) || fallback));
 export const mayContact = (unansweredSends, limit) => unansweredSends < limit;
 
 export class HeartbeatEngine {
-  constructor({ config, store }) {
+  constructor({ config, store, callModel = callHeartbeatModel }) {
     this.config = config;
     this.store = store;
+    this.callModel = callModel;
     this.running = false;
     this.timer = null;
   }
@@ -54,16 +56,20 @@ export class HeartbeatEngine {
       this.store.appendExperience(charId, 'capability_error', { capability: 'trendradar', message: error.message }, now.getTime());
     }
     const experiences = this.store.recentExperiences(charId, 12);
-    let decision = await callHeartbeatModel({ config: this.config, snapshot: char.snapshot, experiences, trends, verification: null });
+    const deliveryRecords = this.store.deliveryIntentsForCharacter(charId, now.getTime() - DELIVERY_WINDOW_MS);
+    const deliveryEligibility = evaluateDeliveryEligibility(char.snapshot, deliveryRecords, now.getTime());
+    let decision = await this.callModel({ config: this.config, snapshot: char.snapshot, experiences, trends, verification: null, deliveryEligibility, currentTime: now.toISOString() });
 
     if (decision.searchQuery) {
       let verification;
       try { verification = await searchTavily({ query: decision.searchQuery, maxResults: 5 }, this.config); }
       catch (error) { verification = { error: error.message }; }
-      decision = await callHeartbeatModel({ config: this.config, snapshot: char.snapshot, experiences, trends, verification });
+      decision = await this.callModel({ config: this.config, snapshot: char.snapshot, experiences, trends, verification, deliveryEligibility, currentTime: now.toISOString() });
     }
 
-    const action = ['idle', 'life', 'read_trend', 'search', 'contact'].includes(decision.action) ? decision.action : 'idle';
+    const requestedDelivery = decision.deliveryOrder != null;
+    const deliveryIntent = deliveryEligibility.allowed ? normalizeDeliveryIntent(char.snapshot, decision.deliveryOrder) : null;
+    const action = deliveryIntent ? 'delivery_order' : (['idle', 'life', 'read_trend', 'search', 'contact'].includes(decision.action) ? decision.action : 'idle');
     this.store.appendExperience(charId, action, {
       experience: String(decision.experience ?? '').slice(0, 2_000),
       thought: String(decision.thought ?? '').slice(0, 2_000),
@@ -71,7 +77,14 @@ export class HeartbeatEngine {
 
     let contacted = false;
     const latest = this.store.getCharacter(charId);
-    if (decision.shouldContact === true && String(decision.message ?? '').trim()
+    if (deliveryIntent && mayContact(latest.unansweredSends, this.config.maxUnansweredSends)) {
+      this.store.enqueueDeliveryIntent(charId, buildPendingDeliveryMessage(char.snapshot, deliveryIntent), deliveryIntent, now.getTime());
+      contacted = true;
+    } else if (requestedDelivery && !deliveryIntent) {
+      this.store.appendExperience(charId, 'delivery_blocked', { reason: deliveryEligibility.reason === 'ok' ? 'invalid_intent' : deliveryEligibility.reason }, now.getTime());
+    } else if (deliveryIntent && !mayContact(latest.unansweredSends, this.config.maxUnansweredSends)) {
+      this.store.appendExperience(charId, 'delivery_blocked', { reason: 'unanswered_limit', limit: this.config.maxUnansweredSends }, now.getTime());
+    } else if (decision.shouldContact === true && String(decision.message ?? '').trim()
       && mayContact(latest.unansweredSends, this.config.maxUnansweredSends)) {
       this.store.enqueue(charId, String(decision.message).trim().slice(0, 4_000), { source: 'heartbeat', action }, now.getTime());
       contacted = true;

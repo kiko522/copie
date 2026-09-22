@@ -37,11 +37,6 @@ import { MULTIPART_FAILURE_REASON } from '@rei-standard/amsg-shared';
 import { appendInstantTraceEntry } from './instantTraceLog';
 import { captureSwRegistrationSnapshot, probeSwChannel } from './swChannelProbe';
 import { trackEvent } from './analytics';
-import {
-  buildDeliveryConfirmationCard,
-  executeCharacterDeliveryIntent,
-  type CharacterDeliveryIntent,
-} from './deliveryAutonomy';
 
 // 同一个 category，两个 tag——保持 console 里现有的 [ActiveMsg] / [amsg] 标签，
 // 方便用户 / 文档里 grep 历史报错信息。两条 tag 都归 amsg 一类。
@@ -661,17 +656,6 @@ const processInboxMessageWithPostProcessing = async (
     }
   }
 
-  const allFinalDirectives = isLastChunk(message) ? extractDirectives(message) : [];
-  // 普通副作用在看到上一趟落库痕迹后不重放；点单例外，因为它有稳定订单主键，必须允许
-  // “扣款已提交、确认卡落库失败”这类中断继续补卡，同时仍不会二次扣款。
-  const deliveryDirectives = allFinalDirectives.filter(
-    (directive): directive is CharacterDeliveryIntent => directive.type === 'delivery_order',
-  );
-  // 点单不是一段可重建后交给 chatParser 执行的文本标签：它必须经过专门的客户端安全闸。
-  const postProcessDirectives = replayDirectives
-    ? allFinalDirectives.filter((directive) => directive.type !== 'delivery_order')
-    : [];
-
   await applyAssistantPostProcessing(message.body || '', {
     char,
     userProfile,
@@ -754,7 +738,7 @@ const processInboxMessageWithPostProcessing = async (
     // 这里加 isLastChunk 守卫双保险, 防未来 worker bug 在多条 push 都塞 directives.
     // 老 worker (无 messageIndex/totalMessages 字段) ?? 0 fallback, 0===0 也算 last.
     // replayDirectives=false = 这是重试、且上次已经把副作用跑完了（见 prepareInboxRetry）。
-    directives: postProcessDirectives,
+    directives: replayDirectives && isLastChunk(message) ? extractDirectives(message) : [],
     reasoningContent,
     // 这条 push 拆出的每条气泡共用一个时间戳 (跟降级存原稿路径同口径), 见
     // resolveInboxPersistTimestampForMessage。
@@ -769,50 +753,6 @@ const processInboxMessageWithPostProcessing = async (
     // App 在前台时收到的实时消息照旧慢放——那才是「角色正在你眼前打字」的场景。
     instantRender: shouldRenderInstantly(message.metadata, message.receivedAt, Date.now()),
   });
-
-  // 正文先落库，再尝试原子结账。这样角色只能先说「我试着点」，客户端确认成功后才会
-  // 追加真正的订单卡；失败则留下明确的本地系统说明，不会把计划误显示成已付款事实。
-  for (const intent of deliveryDirectives) {
-    const result = await executeCharacterDeliveryIntent(char, intent);
-    const inheritMeta = {
-      source: 'delivery_autonomy',
-      activeMsg2: {
-        messageId: message.messageId,
-        taskId: message.taskId,
-        messageType: message.messageType,
-        messageSubtype: message.messageSubtype,
-        sentAt: message.sentAt,
-        receivedAt: message.receivedAt,
-      },
-    };
-    if (result.status === 'placed') {
-      const card = buildDeliveryConfirmationCard(result.order);
-      await DB.saveMessageOnce(`delivery-autonomy:${intent.intentId}`, {
-        charId: char.id,
-        role: 'assistant',
-        type: 'html_card',
-        content: card.preview,
-        timestamp: persistTimestamp,
-        metadata: {
-          ...inheritMeta,
-          htmlSource: card.html,
-          htmlTextPreview: card.preview,
-          commerceOrderId: result.order.id,
-          deliveryIntentId: intent.intentId,
-        },
-      });
-    } else {
-      await DB.saveMessageOnce(`delivery-autonomy:${intent.intentId}`, {
-        charId: char.id,
-        role: 'system',
-        type: 'text',
-        content: `[自动点单未完成：${result.reason}]`,
-        timestamp: persistTimestamp,
-        metadata: { ...inheritMeta, deliveryIntentId: intent.intentId },
-      });
-    }
-    dispatchProgress();
-  }
 
   // ─── 即时对话（amsg2）的情绪评估结果 ───
   // 云端跟主回复并行跑完的那份，挂在最后一条 push 的 metadata 上（装不下时挪进

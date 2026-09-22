@@ -3,6 +3,7 @@ import type { BankCard, CharacterProfile, DeliveryAddress, Message } from '../ty
 import { DB } from './db';
 import {
   collectRecentFoodWishes,
+  collectRecentFoodWishSignals,
   executeCharacterDeliveryIntent,
   type CharacterDeliveryIntent,
 } from './deliveryAutonomy';
@@ -24,10 +25,7 @@ const setup = async (balance = 500) => {
   const char = {
     id: charId,
     name: '小夏',
-    activeMsg2Config: {
-      enabled: true,
-      deliveryAutonomy: { enabled: true, cardId: card.id, allowedAddressIds: [address.id] },
-    },
+    deliveryAutonomy: { enabled: true, cardId: card.id, allowedAddressIds: [address.id] },
   } as CharacterProfile;
   await DB.saveBankCard(card);
   await DB.saveDeliveryAddress(address);
@@ -72,7 +70,7 @@ describe('角色自主点外卖客户端闸门', () => {
       .toMatchObject({ status: 'rejected', reason: expect.stringContaining('没有授权') });
     expect(await executeCharacterDeliveryIntent(char, intent('bad-product', address.id, 'made-up-product'), now))
       .toMatchObject({ status: 'rejected', reason: expect.stringContaining('不属于') });
-    const stolen = { ...char, activeMsg2Config: { ...char.activeMsg2Config!, deliveryAutonomy: { ...char.activeMsg2Config!.deliveryAutonomy!, cardId: 'not-owned' } } };
+    const stolen = { ...char, deliveryAutonomy: { ...char.deliveryAutonomy!, cardId: 'not-owned' } };
     expect(await executeCharacterDeliveryIntent(stolen as CharacterProfile, intent('bad-card', address.id), now))
       .toMatchObject({ status: 'rejected', reason: expect.stringContaining('不属于') });
     expect((await DB.getBankCards(char.id)).find((item) => item.id === card.id)?.balance).toBe(500);
@@ -88,12 +86,9 @@ describe('角色自主点外卖客户端闸门', () => {
     await DB.saveDeliveryAddress(foreignAddress);
     const misconfigured = {
       ...char,
-      activeMsg2Config: {
-        ...char.activeMsg2Config!,
-        deliveryAutonomy: {
-          ...char.activeMsg2Config!.deliveryAutonomy!,
-          allowedAddressIds: [foreignAddress.id],
-        },
+      deliveryAutonomy: {
+        ...char.deliveryAutonomy!,
+        allowedAddressIds: [foreignAddress.id],
       },
     } as CharacterProfile;
     expect(await executeCharacterDeliveryIntent(misconfigured, intent('foreign-address', foreignAddress.id), 1_900_300_000_000))
@@ -112,5 +107,17 @@ describe('最近 90 分钟饮食表达', () => {
       { role: 'user', content: '我想吃蛋糕', timestamp: now - 91 * 60_000 },
     ] as Message[];
     expect(collectRecentFoodWishes(rows, now)).toEqual(['我想喝奶茶']);
+  });
+
+  it('后续取消会清除更早的饮食愿望', () => {
+    const now = 2_000_000;
+    const rows = [
+      { id: 'wish-1', role: 'user', content: '我想喝奶茶', timestamp: now - 30_000 },
+      { id: 'cancel-1', role: 'user', content: '算了，不用点了', timestamp: now - 20_000 },
+      { id: 'wish-2', role: 'user', content: '不过现在想吃蛋糕', timestamp: now - 10_000 },
+    ] as Message[];
+    expect(collectRecentFoodWishSignals(rows, now)).toEqual([
+      { id: 'wish-2', text: '不过现在想吃蛋糕', timestamp: now - 10_000 },
+    ]);
   });
 });

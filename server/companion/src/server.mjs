@@ -8,6 +8,48 @@ import { CompanionStore } from './store.mjs';
 import { HeartbeatEngine } from './heartbeat.mjs';
 import { createRealtimeRoomCredentials } from './livekit-token.mjs';
 
+const safeText = (value, max) => String(value ?? '').slice(0, max);
+const safeNumber = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
+
+const normalizeSchedule = (value) => {
+  if (!value || typeof value !== 'object') return null;
+  const slots = Array.isArray(value.slots) ? value.slots.slice(0, 48).map((slot) => ({
+    startTime: safeText(slot?.startTime, 10), activity: safeText(slot?.activity, 200),
+    description: safeText(slot?.description, 500), location: safeText(slot?.location, 200),
+    innerThought: safeText(slot?.innerThought, 1_000),
+  })).filter((slot) => slot.startTime && slot.activity) : [];
+  const flowNarrative = value.flowNarrative && typeof value.flowNarrative === 'object'
+    ? Object.fromEntries(Object.entries(value.flowNarrative).slice(0, 48).map(([key, text]) => [safeText(key, 10), safeText(text, 2_000)]))
+    : {};
+  return { date: safeText(value.date, 10), slots, flowNarrative };
+};
+
+const normalizeDeliverySnapshot = (value) => {
+  if (!value || value.enabled !== true || value.paymentReady !== true) return { enabled: false, paymentReady: false };
+  const allowedAddresses = Array.isArray(value.allowedAddresses) ? value.allowedAddresses.slice(0, 20).map((address) => ({
+    id: safeText(address?.id, 128),
+    recipient: address?.recipient === 'character' ? 'character' : 'user',
+    label: safeText(address?.label, 80),
+  })).filter((address) => address.id) : [];
+  const catalog = Array.isArray(value.catalog) ? value.catalog.slice(0, 20).map((store) => ({
+    id: safeText(store?.id, 128), name: safeText(store?.name, 200), category: safeText(store?.category, 100),
+    minimumOrder: safeNumber(store?.minimumOrder), deliveryFee: safeNumber(store?.deliveryFee),
+    products: Array.isArray(store?.products) ? store.products.slice(0, 100).map((product) => ({
+      id: safeText(product?.id, 128), name: safeText(product?.name, 200), price: safeNumber(product?.price),
+    })).filter((product) => product.id && product.name && product.price >= 0) : [],
+  })).filter((store) => store.id && store.name) : [];
+  const recentWishes = Array.isArray(value.recentWishes) ? value.recentWishes.slice(-4).map((wish) => ({
+    id: safeText(wish?.id, 128), text: safeText(wish?.text, 180), timestamp: safeNumber(wish?.timestamp),
+  })).filter((wish) => wish.id && wish.text && wish.timestamp > 0) : [];
+  const recentPlacedAt = Array.isArray(value.recentPlacedAt) ? value.recentPlacedAt.slice(-4).map(safeNumber).filter((time) => time > 0) : [];
+  return {
+    enabled: allowedAddresses.length > 0 && catalog.length > 0,
+    paymentReady: true,
+    frequency: ['rare', 'normal', 'often'].includes(value.frequency) ? value.frequency : 'normal',
+    allowedAddresses, catalog, recentWishes, recentPlacedAt,
+  };
+};
+
 export const createCompanionApp = (config = loadConfig(), store = new CompanionStore(config.dataDir)) => {
   const heartbeat = new HeartbeatEngine({ config, store });
   const server = createServer(async (req, res) => {
@@ -48,6 +90,7 @@ export const createCompanionApp = (config = loadConfig(), store = new CompanionS
           quietHours: `${config.quietStart}-${config.quietEnd}`,
           maxUnansweredSends: config.maxUnansweredSends,
         },
+        deliveryAutonomy: { configured: true, execution: 'client-confirmed' },
         realtimeVoice: { configured: Boolean(config.livekitUrl && config.livekitApiKey && config.livekitApiSecret) },
       }, cors);
     }
@@ -87,6 +130,8 @@ export const createCompanionApp = (config = loadConfig(), store = new CompanionS
         interests: Array.isArray(body.interests) ? body.interests.slice(0, 100).map(String) : [],
         recentMessages: Array.isArray(body.recentMessages) ? body.recentMessages.slice(-30) : [],
         timeZone: String(body.timeZone ?? '').slice(0, 100),
+        schedule: normalizeSchedule(body.schedule),
+        deliveryAutonomy: normalizeDeliverySnapshot(body.deliveryAutonomy),
       };
       return json(res, 200, store.upsertCharacter(id, snapshot), cors);
     }
@@ -99,6 +144,7 @@ export const createCompanionApp = (config = loadConfig(), store = new CompanionS
         ok: true,
         deletedExperiences: cleared.deletedExperiences,
         deletedOutbox: cleared.deletedOutbox,
+        deletedDeliveryIntents: cleared.deletedDeliveryIntents,
       }, cors);
     }
 
@@ -142,6 +188,14 @@ export const createCompanionApp = (config = loadConfig(), store = new CompanionS
       const acked = store.ackOutbox(decodeURIComponent(ackMatch[1]));
       if (!acked) throw Object.assign(new Error('待确认消息不存在'), { status: 404 });
       return json(res, 200, { ok: true }, cors);
+    }
+
+    const deliveryResultMatch = url.pathname.match(/^\/v1\/delivery-intents\/([^/]+)\/result$/);
+    if (req.method === 'POST' && deliveryResultMatch) {
+      const body = await readJsonBody(req, 16 * 1024);
+      const resolved = store.resolveDeliveryIntent(decodeURIComponent(deliveryResultMatch[1]), body.status);
+      if (!resolved) throw Object.assign(new Error('点单意图不存在'), { status: 404 });
+      return json(res, 200, resolved, cors);
     }
 
     if (req.method === 'GET' && url.pathname === '/v1/weather') {

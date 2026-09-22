@@ -101,7 +101,6 @@ import { listRecallableMonths } from './agenticTools';
 import { ChatPrompts } from './chatPrompts';
 import { nowInTimeZone, resolveCharTimeZone, tzAwarenessNote } from './timezone';
 import { DB } from './db';
-import { buildDeliveryAutonomyPrompt, collectRecentFoodWishes } from './deliveryAutonomy';
 import { copyWorkerBundleToClipboard } from './workerDeploy';
 import { collectMcpFireServers, getMcpUseNativeTools } from './mcpClient';
 import { safeResponseJson } from './safeApi';
@@ -715,7 +714,7 @@ export const buildFirePack = async (
   },
 ): Promise<AmsgFirePack> => {
   const templateStub = opts?.templateStub === true;
-  const [{ lastUserMessageAt }, recentMessages, library, schedule, deliveryAddresses] = await Promise.all([
+  const [{ lastUserMessageAt }, recentMessages, library, schedule] = await Promise.all([
     buildTimeGapHint(char.id),
     templateStub ? Promise.resolve([]) : loadCharacterContextMessages(char),
     // 表情库只喂系统提示词/近史渲染：占位模板路径整库都不用读（表情记录带图片数据，
@@ -730,9 +729,6 @@ export const buildFirePack = async (
           return null;
         })
       : Promise.resolve(null),
-    char.activeMsg2Config?.deliveryAutonomy?.enabled
-      ? DB.getDeliveryAddresses().catch(() => [])
-      : Promise.resolve([]),
   ]);
   // 角色的时间参照系：开了自定义时区用角色的，没开用设备的。worker 渲染一切给角色看的
   // 时间（当前时间、日程日期、排程清单）都按它来。
@@ -768,11 +764,6 @@ export const buildFirePack = async (
       }
     : null;
   const legacyHint = buildLegacyStyleProactiveHint(userProfile.name || '对方', timeAware);
-  const deliveryAutonomyPrompt = buildDeliveryAutonomyPrompt({
-    config: char.activeMsg2Config?.deliveryAutonomy,
-    addresses: deliveryAddresses,
-    recentWishes: collectRecentFoodWishes(recentMessages),
-  });
   // 前台每轮都注入的时差说明（「你身处 X 时区……对方可能在不同时区」）。它是静态文案、
   // 不随时间变，所以打包时就烤进模板；到点由 AMSG_SLOT_USER_CLOCK 补上「对方那边现在
   // 几点」。fire 侧的角色设定是 skipTimeAwareness 建的，整块时间感知都被抹掉了，
@@ -857,7 +848,6 @@ export const buildFirePack = async (
     // 最后是「外面的世界此刻什么样」（节日 / 天气 / 热搜）：跟时间同属「此刻的读数」，
     // 一样由 worker 到点现拉现填，拉不到就整段消失。
     `${timeAware ? AMSG_SLOT_TIME_SINCE_USER : ''}${AMSG_SLOT_TASK_LIST}${AMSG_SLOT_REALTIME_WORLD}`,
-    deliveryAutonomyPrompt,
     '',
     legacyHint,
     '',
