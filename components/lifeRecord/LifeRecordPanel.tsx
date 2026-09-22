@@ -9,7 +9,13 @@ import {
 } from '../../utils/lifeRecords';
 import { useLocalDateKey } from '../../hooks/useLocalDateKey';
 import { markAmsgStateDirtyForAll } from '../../utils/amsgStateSync';
-import { formatMoney, sumMoney } from '../../utils/format';
+import { formatMoney } from '../../utils/format';
+import {
+    USER_BANK_OWNER_ID,
+    formatSignedTransactionAmount,
+    sumTransactionExpenses,
+    sumTransactionIncome,
+} from '../../utils/bankLedger';
 
 /**
  * 档案 App「生活记录」面板 —— 复古优雅浅色系，但四个模块各有独立版式：
@@ -295,7 +301,7 @@ const LifeRecordPanel: React.FC = () => {
             DB.getAllLifeRecords().catch(() => [] as LifeRecord[]),
             DB.getAllMedPlans().catch(() => [] as MedPlan[]),
             DB.getLifeRecordSettings().catch(() => null),
-            DB.getAllTransactions().catch(() => [] as BankTransaction[]),
+            DB.getAllTransactions(USER_BANK_OWNER_ID).catch(() => [] as BankTransaction[]),
         ]);
         setRecords(r.sort((a, b) => b.timestamp - a.timestamp));
         setPlans(p.sort((a, b) => a.time.localeCompare(b.time)));
@@ -508,23 +514,30 @@ const LifeRecordPanel: React.FC = () => {
     // ─── 记账（银行同一本账） ───
     const [txAmount, setTxAmount] = useState('');
     const [txNote, setTxNote] = useState('');
+    const [txEntryType, setTxEntryType] = useState<'expense' | 'income' | 'refund'>('expense');
     const dayTxs = useMemo(() => txs.filter(t => t.dateStr === recordDate), [txs, recordDate]);
-    const dayTotal = useMemo(() => sumMoney(dayTxs.map(t => t.amount)), [dayTxs]);
-    const monthTotal = useMemo(() => {
+    const dayExpense = useMemo(() => sumTransactionExpenses(dayTxs), [dayTxs]);
+    const dayIncome = useMemo(() => sumTransactionIncome(dayTxs), [dayTxs]);
+    const monthTxs = useMemo(() => {
         const monthKey = recordDate.slice(0, 7);
-        return sumMoney(txs.filter(t => (t.dateStr || '').startsWith(monthKey)).map(t => t.amount));
+        return txs.filter(t => (t.dateStr || '').startsWith(monthKey));
     }, [txs, recordDate]);
+    const monthExpense = useMemo(() => sumTransactionExpenses(monthTxs), [monthTxs]);
+    const monthIncome = useMemo(() => sumTransactionIncome(monthTxs), [monthTxs]);
 
     const handleAddTx = async () => {
         const amount = parseFloat(txAmount);
         if (isNaN(amount) || amount <= 0 || !txNote.trim()) { addToast('请填写金额和用途哦', 'error'); return; }
         await DB.saveTransaction({
-            id: newId('tx-life'), amount, category: 'general',
+            id: newId('tx-life'), ownerId: USER_BANK_OWNER_ID, amount: Math.abs(amount),
+            direction: txEntryType === 'expense' ? 'expense' : 'income',
+            kind: txEntryType === 'refund' ? 'refund' : 'manual', source: 'manual', category: 'general',
             note: txNote.trim(), timestamp: Date.now(), dateStr: recordDate,
         });
-        setTxAmount(''); setTxNote('');
+        setTxAmount(''); setTxNote(''); setTxEntryType('expense');
         await reload();
-        addToast(recordDate === today ? '记账成功' : `已补记到 ${fmtCN(recordDate)}`, 'success');
+        const typeLabel = txEntryType === 'expense' ? '支出' : txEntryType === 'refund' ? '退款' : '收入';
+        addToast(recordDate === today ? `${typeLabel}已入账` : `${typeLabel}已补记到 ${fmtCN(recordDate)}`, 'success');
     };
 
     // ─── 锻炼 ───
@@ -878,22 +891,36 @@ const LifeRecordPanel: React.FC = () => {
                             <div className="flex-1">
                                 <div className="text-[9px] mb-0.5" style={{ color: FADE, letterSpacing: '0.25em' }}>{recordDateLabel}支出</div>
                                 <div style={{ fontFamily: SERIF, color: THEMES.expense.accent }}>
-                                    <span className="text-[34px] font-bold leading-none tabular-nums">{formatMoney(dayTotal)}</span>
+                                    <span className="text-[34px] font-bold leading-none tabular-nums">{formatMoney(dayExpense)}</span>
                                 </div>
+                                {dayIncome > 0 && <div className="text-[9px] mt-1 text-emerald-700">收入 +{formatMoney(dayIncome)}</div>}
                             </div>
                             <span className="w-px mx-3" style={{ background: THEMES.expense.soft }} />
                             <div className="text-right flex flex-col justify-end pb-1">
                                 <div className="text-[9px] mb-0.5" style={{ color: FADE, letterSpacing: '0.16em' }}>{recordMonthLabel}</div>
-                                <div className="text-sm font-bold tabular-nums" style={{ fontFamily: SERIF, color: INK }}>{formatMoney(monthTotal)}</div>
+                                <div className="text-sm font-bold tabular-nums" style={{ fontFamily: SERIF, color: INK }}>支出 {formatMoney(monthExpense)}</div>
+                                {monthIncome > 0 && <div className="text-[9px] text-emerald-700">收入 +{formatMoney(monthIncome)}</div>}
                             </div>
                         </div>
                         <p className="text-[9px] italic mt-2 px-1" style={{ color: FAINT, fontFamily: SERIF }}>
                             与银行 App 共用一本账
                         </p>
-                        <div className="flex items-end gap-2.5 mt-3 pt-3" style={{ borderTop: `1px dashed ${THEMES.expense.soft}` }}>
+                        <div className="grid grid-cols-3 gap-1.5 mt-3 pt-3" style={{ borderTop: `1px dashed ${THEMES.expense.soft}` }}>
+                            {([
+                                ['expense', '支出'], ['income', '收入'], ['refund', '退款'],
+                            ] as const).map(([value, label]) => (
+                                <button key={value} type="button" onClick={() => setTxEntryType(value)}
+                                    className="py-1 rounded-full text-[10px] font-bold"
+                                    style={txEntryType === value ? accentBtn(THEMES.expense) : { color: FADE, border: `1px solid ${THEMES.expense.soft}` }}>
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="flex items-end gap-2.5 mt-2.5">
                             <input value={txAmount} onChange={e => setTxAmount(e.target.value)} inputMode="decimal" placeholder="金额"
                                 className={`w-16 ${inkInputCls}`} style={inkInputStyle(THEMES.expense)} />
-                            <input value={txNote} onChange={e => setTxNote(e.target.value)} placeholder="用途（奶茶 / 午饭…）"
+                            <input value={txNote} onChange={e => setTxNote(e.target.value)}
+                                placeholder={txEntryType === 'expense' ? '用途（奶茶 / 午饭…）' : txEntryType === 'refund' ? '退款内容' : '收入来源'}
                                 className={`flex-1 min-w-0 ${inkInputCls}`} style={inkInputStyle(THEMES.expense)} />
                             <button onClick={handleAddTx}
                                 className="shrink-0 px-4 py-1.5 rounded-full text-[11px] font-bold active:scale-95 transition-transform"
@@ -915,7 +942,9 @@ const LifeRecordPanel: React.FC = () => {
                                     <div key={t.id} className="flex items-center gap-2 py-2 text-[11px]"
                                         style={{ fontFamily: SERIF, borderBottom: `1px dashed ${THEMES.expense.soft}` }}>
                                         <span className="flex-1 truncate" style={{ color: INK }}>{t.note || '未备注'}</span>
-                                        <span className="font-bold tabular-nums" style={{ color: THEMES.expense.accent }}>{formatMoney(t.amount)}</span>
+                                        <span className="font-bold tabular-nums" style={{ color: t.direction === 'expense' ? THEMES.expense.accent : '#15803d' }}>
+                                            {formatSignedTransactionAmount(t, '¥')}
+                                        </span>
                                         <button
                                             onClick={async () => { await DB.deleteTransaction(t.id); await reload(); addToast('记录已删除', 'success'); }}
                                             className="px-1 text-slate-300 hover:text-rose-400"

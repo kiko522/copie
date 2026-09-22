@@ -5,6 +5,12 @@ import { safeResponseJson } from '../../utils/safeApi';
 import { getLocalDateKey } from '../../utils/localDate';
 import { shareOrDownloadFile } from '../../utils/shareExport';
 import { formatMoney, roundMoney, sumMoney } from '../../utils/format';
+import {
+    formatSignedTransactionAmount,
+    isExpenseTransaction,
+    sumTransactionExpenses,
+    sumTransactionIncome,
+} from '../../utils/bankLedger';
 
 interface Props {
     transactions: BankTransaction[];
@@ -58,21 +64,25 @@ const BankAnalytics: React.FC<Props> = ({ transactions, goals, currency, onDelet
     }, [transactions, viewMode, today, weekStart, currentMonth]);
 
     // Calculate totals
-    const totalSpent = useMemo(() => sumMoney(filteredTx.map(tx => tx.amount)), [filteredTx]);
+    const expenseTx = useMemo(() => filteredTx.filter(isExpenseTransaction), [filteredTx]);
+    const totalSpent = useMemo(() => sumTransactionExpenses(filteredTx), [filteredTx]);
+    const totalIncome = useMemo(() => sumTransactionIncome(filteredTx), [filteredTx]);
 
     // CSV Export
     const handleExportCSV = async () => {
         if (transactions.length === 0) return;
         const BOM = '\uFEFF';
-        const header = '日期,时间,金额,备注,分类\n';
-        const rows = transactions
+        const header = '日期,时间,收支,类型,金额,备注,分类,归属,银行卡,来源,业务引用\n';
+        const rows = [...transactions]
             .sort((a, b) => b.timestamp - a.timestamp)
             .map(tx => {
                 const date = tx.dateStr;
                 const time = new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 const cat = CATEGORIES[categorizedTx[tx.id] || guessCategory(tx.note)]?.label || '其他';
                 const note = tx.note.replace(/,/g, '，').replace(/"/g, '""');
-                return `${date},${time},${formatMoney(tx.amount)},"${note}",${cat}`;
+                const direction = tx.direction === 'expense' ? '支出' : '收入';
+                const kind = tx.kind === 'refund' ? '退款' : tx.kind === 'purchase' ? '购买' : tx.kind === 'llm_purchase' ? '角色购买' : '手动';
+                return `${date},${time},${direction},${kind},${formatMoney(tx.amount)},"${note}",${cat},${tx.ownerId},${tx.cardId || ''},${tx.source},${tx.sourceRef || ''}`;
             })
             .join('\n');
         const csv = BOM + header + rows;
@@ -88,7 +98,7 @@ const BankAnalytics: React.FC<Props> = ({ transactions, goals, currency, onDelet
     const categoryData = useMemo(() => {
         const groups: Record<string, { total: number; count: number; items: BankTransaction[] }> = {};
 
-        filteredTx.forEach(tx => {
+        expenseTx.forEach(tx => {
             const cat = categorizedTx[tx.id] || guessCategory(tx.note);
             if (!groups[cat]) groups[cat] = { total: 0, count: 0, items: [] };
             groups[cat].total += tx.amount;
@@ -99,7 +109,7 @@ const BankAnalytics: React.FC<Props> = ({ transactions, goals, currency, onDelet
         return Object.entries(groups)
             .map(([key, data]) => ({ category: key, ...data, total: roundMoney(data.total), percentage: totalSpent > 0 ? (data.total / totalSpent) * 100 : 0 }))
             .sort((a, b) => b.total - a.total);
-    }, [filteredTx, categorizedTx, totalSpent]);
+    }, [expenseTx, categorizedTx, totalSpent]);
 
     // Simple keyword-based category guessing
     function guessCategory(note: string): string {
@@ -116,11 +126,11 @@ const BankAnalytics: React.FC<Props> = ({ transactions, goals, currency, onDelet
 
     // AI categorization and summary
     const analyzeWithAI = async () => {
-        if (!apiConfig?.apiKey || filteredTx.length === 0) return;
+        if (!apiConfig?.apiKey || expenseTx.length === 0) return;
 
         setIsAnalyzing(true);
         try {
-            const txList = filteredTx.map(tx => `- ${tx.note}: ${currency}${formatMoney(tx.amount)}`).join('\n');
+            const txList = expenseTx.map(tx => `- ${tx.note}: ${currency}${formatMoney(tx.amount)}`).join('\n');
             const periodLabel = viewMode === 'today' ? '今天' : viewMode === 'week' ? '本周' : '本月';
 
             const prompt = `作为一个财务分析助手，分析以下消费记录：
@@ -150,7 +160,7 @@ ${txList}
 
                 // Map categories to transaction IDs
                 const newCategories: Record<string, string> = { ...categorizedTx };
-                filteredTx.forEach(tx => {
+                expenseTx.forEach(tx => {
                     if (result.categories[tx.note]) {
                         newCategories[tx.id] = result.categories[tx.note];
                     }
@@ -211,10 +221,10 @@ ${txList}
                             {viewMode === 'today' ? '今日支出' : viewMode === 'week' ? '本周支出' : '本月支出'}
                         </div>
                         <div className="text-5xl font-black text-white font-mono tracking-tight">
-                            {currency}{totalSpent.toFixed(0)}
+                            {currency}{formatMoney(totalSpent)}
                         </div>
                         <div className="text-sm text-white/50 mt-1">
-                            共 {filteredTx.length} 笔
+                            共 {filteredTx.length} 笔{totalIncome > 0 ? ` · 收入 +${currency}${formatMoney(totalIncome)}` : ''}
                         </div>
                     </div>
 
@@ -233,7 +243,7 @@ ${txList}
                                     </span>
                                 </div>
                                 <span className={`text-2xl font-black font-mono ${budgetStatus === 'good' ? 'text-green-300' : 'text-red-300'}`}>
-                                    {budgetStatus === 'good' ? '+' : ''}{currency}{Math.abs(budgetRemaining).toFixed(0)}
+                                    {budgetStatus === 'good' ? '+' : '-'}{currency}{formatMoney(Math.abs(budgetRemaining))}
                                 </span>
                             </div>
                             <div className="mt-2 h-2 bg-black/20 rounded-full overflow-hidden">
@@ -245,7 +255,7 @@ ${txList}
                                 ></div>
                             </div>
                             <div className="text-[10px] text-white/50 mt-1 text-right">
-                                预算 {currency}{dailyBudget}
+                                预算 {currency}{formatMoney(dailyBudget)}
                             </div>
                         </div>
                     )}
@@ -256,7 +266,7 @@ ${txList}
             <div className="p-5 space-y-5">
 
                 {/* AI Summary Card */}
-                {(aiSummary || filteredTx.length > 0) && (
+                {(aiSummary || expenseTx.length > 0) && (
                     <div className="bg-white rounded-3xl p-5 shadow-lg border border-[#E8DCC8] relative overflow-hidden">
                         <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-[#FFE0B2]/30 to-transparent rounded-full -mr-8 -mt-8"></div>
 
@@ -315,7 +325,7 @@ ${txList}
                                                 <span className="text-sm font-bold text-[#5D4037]">{cat.label}</span>
                                                 <span className="text-[10px] text-[#A1887F] bg-[#FDF6E3] px-2 py-0.5 rounded-full">{count}笔</span>
                                             </div>
-                                            <span className="font-mono font-bold text-[#5D4037]">{currency}{total.toFixed(0)}</span>
+                                            <span className="font-mono font-bold text-[#5D4037]">{currency}{formatMoney(total)}</span>
                                         </div>
                                         <div className="h-3 bg-[#EFEBE9] rounded-full overflow-hidden">
                                             <div
@@ -338,7 +348,7 @@ ${txList}
                     <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-2">
                             <span className="w-8 h-8 bg-gradient-to-br from-[#66BB6A] to-[#43A047] rounded-xl flex items-center justify-center text-lg shadow-md"><img src="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/1f4dd.png" className="w-5 h-5" alt="" /></span>
-                            <span className="text-sm font-bold text-[#5D4037]">消费明细</span>
+                            <span className="text-sm font-bold text-[#5D4037]">流水明细</span>
                         </div>
                         {transactions.length > 0 && (
                             <button onClick={handleExportCSV} className="flex items-center gap-1 px-3 py-1.5 bg-[#FDF6E3] hover:bg-[#FFF8E1] border border-[#E8DCC8] rounded-xl text-[10px] font-bold text-[#8D6E63] active:scale-95 transition-all">
@@ -352,7 +362,7 @@ ${txList}
                         <div className="text-center py-12">
                             <div className="mb-3 opacity-40"><img src="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/1f4ed.png" className="w-16 h-16 mx-auto" alt="" /></div>
                             <div className="text-sm text-[#A1887F]">
-                                {viewMode === 'today' ? '今天还没有消费记录' : viewMode === 'week' ? '本周暂无记录' : '本月暂无记录'}
+                                {viewMode === 'today' ? '今天还没有流水' : viewMode === 'week' ? '本周暂无流水' : '本月暂无流水'}
                             </div>
                             <div className="text-xs text-[#BCAAA4] mt-1">点击右上角开始记账吧！</div>
                         </div>
@@ -360,6 +370,7 @@ ${txList}
                         <div className="space-y-3 max-h-[400px] overflow-y-auto no-scrollbar">
                             {filteredTx.map(tx => {
                                 const cat = CATEGORIES[categorizedTx[tx.id] || guessCategory(tx.note)] || CATEGORIES.other;
+                                const isExpense = tx.direction === 'expense';
                                 return (
                                     <div key={tx.id} className="flex items-center justify-between p-3 rounded-2xl bg-[#FDF6E3] hover:bg-[#FFF8E1] transition-colors group relative">
                                         <div className="flex items-center gap-3">
@@ -370,11 +381,15 @@ ${txList}
                                                 <div className="font-bold text-[#5D4037] text-sm">{tx.note}</div>
                                                 <div className="text-[10px] text-[#A1887F] flex items-center gap-2">
                                                     <span>{new Date(tx.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
-                                                    <span className="px-1.5 py-0.5 bg-white rounded text-[9px]" style={{ color: cat.color }}>{cat.label}</span>
+                                                    <span className="px-1.5 py-0.5 bg-white rounded text-[9px]" style={{ color: isExpense ? cat.color : '#16a34a' }}>
+                                                        {tx.kind === 'refund' ? '退款' : isExpense ? cat.label : '收入'}
+                                                    </span>
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="font-mono font-bold text-[#E64A19]">-{currency}{formatMoney(tx.amount)}</div>
+                                        <div className={`font-mono font-bold ${isExpense ? 'text-[#E64A19]' : 'text-[#16A34A]'}`}>
+                                            {formatSignedTransactionAmount(tx, currency)}
+                                        </div>
 
                                         <button
                                             onClick={() => onDeleteTx(tx.id)}
@@ -399,7 +414,7 @@ ${txList}
                             <span className="text-sm font-bold">储蓄进度</span>
                         </div>
 
-                        <div className="text-3xl font-black font-mono mb-3 relative z-10">{currency}{totalSaved.toFixed(0)}</div>
+                        <div className="text-3xl font-black font-mono mb-3 relative z-10">{currency}{formatMoney(totalSaved)}</div>
 
                         {nextGoal && (
                             <div className="bg-white/15 backdrop-blur-sm rounded-xl p-3 relative z-10">

@@ -7,7 +7,7 @@ import {
     CharacterProfile, ChatTheme, Message, UserProfile,
     Task, Anniversary, DiaryEntry, RoomTodo, RoomNote, DailySchedule,
     GalleryImage, FullBackupData, GroupProfile, SocialPost, StudyCourse, GameSession, Worldbook, NovelBook, Emoji, EmojiCategory,
-    BankTransaction, SavingsGoal, BankFullState, DollhouseState, XhsStockImage, XhsActivityRecord, XhsOwnedPost, SongSheet, QuizSession, GuidebookSession,
+    BankTransaction, BankCard, CommerceCheckoutResult, CommerceOrder, CommerceOrderDraft, CommerceOrderType, DeliveryAddress, SavingsGoal, BankFullState, DollhouseState, XhsStockImage, XhsActivityRecord, XhsOwnedPost, SongSheet, QuizSession, GuidebookSession,
     LifeSimState, HandbookEntry, Tracker, TrackerEntry, HotNewsSnapshot,
     LifeRecord, MedPlan, LifeRecordSettings, CharacterGroup,
     CustomCreatorPart,
@@ -19,6 +19,9 @@ import { exportMcpLocal, importMcpLocal } from './mcpClient';
 import { exportAmsg2GlobalConfig, importAmsg2GlobalConfig } from './activeMsgStore';
 import { exportWorldHomeLocal, importWorldHomeLocal } from './worldHome/localBackup';
 import { exportDesktopSkinLocal, importDesktopSkinLocal } from './desktopSkinBackup';
+import { normalizeBankTransaction } from './bankLedger';
+import { CommerceError, prepareCommerceOrder } from './commerce';
+import { getLocalDateKey } from './localDate';
 
 const DB_NAME = 'AetherOS_Data';
 // v67：两条并行线各自用掉了 v65/v66（A线: blob_assets + 生活记录；B线: room_plates 门牌 + digest_reports 消化日志），
@@ -28,7 +31,9 @@ const DB_NAME = 'AetherOS_Data';
 // v70：剧场面具箱（原创人物面具）；角色面具仍只存 characterId，不复制神经链接资料。
 // v71：角色小红书伪主页；发帖归属与可删除的自由活动日志分离。
 // v72：删除已下线虚拟世界留下的对象仓库和消息复合索引。
-const DB_VERSION = 72;
+// v73：银行流水增加 owner/direction/source 索引并迁移旧支出；新增虚拟银行卡仓库。
+// v74：统一外卖/购物订单与收货地址；结账和退款与银行卡、流水使用同一事务。
+const DB_VERSION = 74;
 
 const STORE_CHARACTERS = 'characters';
 const STORE_CHAR_GROUPS = 'character_groups'; // 角色分组定义（角色通过 groupId 指向；与群聊 groups 无关）
@@ -55,6 +60,9 @@ const STORE_WORLDBOOKS = 'worldbooks';
 const STORE_NOVELS = 'novels'; 
 const STORE_BANK_TX = 'bank_transactions';
 const STORE_BANK_DATA = 'bank_data';
+const STORE_BANK_CARDS = 'bank_cards';
+const STORE_COMMERCE_ORDERS = 'commerce_orders';
+const STORE_DELIVERY_ADDRESSES = 'delivery_addresses';
 const STORE_XHS_STOCK = 'xhs_stock';
 const STORE_XHS_ACTIVITIES = 'xhs_activities';
 const STORE_XHS_OWNED_POSTS = 'xhs_owned_posts';
@@ -305,8 +313,47 @@ export const openDB = (): Promise<IDBDatabase> => {
           weStore.createIndex('worldId', 'worldId', { unique: false });
       }
 
-      createStore(STORE_BANK_TX, { keyPath: 'id' });
+      let bankTxStore: IDBObjectStore | undefined;
+      if (!db.objectStoreNames.contains(STORE_BANK_TX)) {
+          bankTxStore = db.createObjectStore(STORE_BANK_TX, { keyPath: 'id' });
+      } else {
+          bankTxStore = (event.target as IDBOpenDBRequest).transaction?.objectStore(STORE_BANK_TX);
+      }
+      if (bankTxStore) {
+          if (!bankTxStore.indexNames.contains('ownerId')) bankTxStore.createIndex('ownerId', 'ownerId', { unique: false });
+          if (!bankTxStore.indexNames.contains('ownerId_dateStr')) bankTxStore.createIndex('ownerId_dateStr', ['ownerId', 'dateStr'], { unique: false });
+          if (!bankTxStore.indexNames.contains('sourceRef')) bankTxStore.createIndex('sourceRef', 'sourceRef', { unique: false });
+
+          // 老流水没有归属和收支字段：正数归为用户支出；曾手填的负数保留为退款收入。
+          if ((event.oldVersion || 0) > 0 && (event.oldVersion || 0) < 73) {
+              const cursorReq = bankTxStore.openCursor();
+              cursorReq.onsuccess = () => {
+                  const cursor = cursorReq.result;
+                  if (!cursor) return;
+                  cursor.update(normalizeBankTransaction(cursor.value));
+                  cursor.continue();
+              };
+          }
+      }
       createStore(STORE_BANK_DATA, { keyPath: 'id' });
+      if (!db.objectStoreNames.contains(STORE_BANK_CARDS)) {
+          const cardStore = db.createObjectStore(STORE_BANK_CARDS, { keyPath: 'id' });
+          cardStore.createIndex('ownerId', 'ownerId', { unique: false });
+          cardStore.createIndex('ownerId_isDefault', ['ownerId', 'isDefault'], { unique: false });
+      }
+      if (!db.objectStoreNames.contains(STORE_COMMERCE_ORDERS)) {
+          const orderStore = db.createObjectStore(STORE_COMMERCE_ORDERS, { keyPath: 'id' });
+          orderStore.createIndex('payerOwnerId', 'payerOwnerId', { unique: false });
+          orderStore.createIndex('recipientOwnerId', 'recipientOwnerId', { unique: false });
+          orderStore.createIndex('type', 'type', { unique: false });
+          orderStore.createIndex('merchantId', 'merchantId', { unique: false });
+          orderStore.createIndex('createdAt', 'createdAt', { unique: false });
+      }
+      if (!db.objectStoreNames.contains(STORE_DELIVERY_ADDRESSES)) {
+          const addressStore = db.createObjectStore(STORE_DELIVERY_ADDRESSES, { keyPath: 'id' });
+          addressStore.createIndex('ownerId', 'ownerId', { unique: false });
+          addressStore.createIndex('ownerId_isDefault', ['ownerId', 'isDefault'], { unique: false });
+      }
       createStore(STORE_XHS_STOCK, { keyPath: 'id' });
 
       if (!db.objectStoreNames.contains(STORE_XHS_ACTIVITIES)) {
@@ -2747,28 +2794,324 @@ export const DB = {
       });
   },
 
-  getAllTransactions: async (): Promise<BankTransaction[]> => {
+  getAllTransactions: async (ownerId?: string): Promise<BankTransaction[]> => {
       const db = await openDB();
       if (!db.objectStoreNames.contains(STORE_BANK_TX)) return [];
       return new Promise((resolve, reject) => {
           const transaction = db.transaction(STORE_BANK_TX, 'readonly');
           const store = transaction.objectStore(STORE_BANK_TX);
-          const request = store.getAll();
-          request.onsuccess = () => resolve(request.result || []);
+          const request = ownerId && store.indexNames.contains('ownerId')
+              ? store.index('ownerId').getAll(IDBKeyRange.only(ownerId))
+              : store.getAll();
+          request.onsuccess = () => {
+              const normalized = (request.result || []).map((row: BankTransaction) => normalizeBankTransaction(row));
+              resolve(ownerId ? normalized.filter(tx => tx.ownerId === ownerId) : normalized);
+          };
           request.onerror = () => reject(request.error);
       });
   },
 
   saveTransaction: async (txData: BankTransaction): Promise<void> => {
       const db = await openDB();
-      const transaction = db.transaction(STORE_BANK_TX, 'readwrite');
-      transaction.objectStore(STORE_BANK_TX).put(txData);
+      return new Promise((resolve, reject) => {
+          const transaction = db.transaction(STORE_BANK_TX, 'readwrite');
+          transaction.objectStore(STORE_BANK_TX).put(normalizeBankTransaction(txData));
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => reject(transaction.error);
+          transaction.onabort = () => reject(transaction.error || new Error('saveTransaction aborted'));
+      });
   },
 
   deleteTransaction: async (id: string): Promise<void> => {
       const db = await openDB();
-      const transaction = db.transaction(STORE_BANK_TX, 'readwrite');
-      transaction.objectStore(STORE_BANK_TX).delete(id);
+      return new Promise((resolve, reject) => {
+          const transaction = db.transaction(STORE_BANK_TX, 'readwrite');
+          transaction.objectStore(STORE_BANK_TX).delete(id);
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => reject(transaction.error);
+          transaction.onabort = () => reject(transaction.error || new Error('deleteTransaction aborted'));
+      });
+  },
+
+  getBankCards: async (ownerId?: string): Promise<BankCard[]> => {
+      const db = await openDB();
+      if (!db.objectStoreNames.contains(STORE_BANK_CARDS)) return [];
+      return new Promise((resolve, reject) => {
+          const transaction = db.transaction(STORE_BANK_CARDS, 'readonly');
+          const store = transaction.objectStore(STORE_BANK_CARDS);
+          const request = ownerId && store.indexNames.contains('ownerId')
+              ? store.index('ownerId').getAll(IDBKeyRange.only(ownerId))
+              : store.getAll();
+          request.onsuccess = () => resolve(((request.result || []) as BankCard[]).sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || b.updatedAt - a.updatedAt));
+          request.onerror = () => reject(request.error);
+      });
+  },
+
+  saveBankCard: async (card: BankCard): Promise<void> => {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+          const transaction = db.transaction(STORE_BANK_CARDS, 'readwrite');
+          const store = transaction.objectStore(STORE_BANK_CARDS);
+          const normalized = { ...card, balance: Math.abs(Math.round(Number(card.balance || 0) * 100) / 100) };
+          if (card.isDefault) {
+              const cursorRequest = store.index('ownerId').openCursor(IDBKeyRange.only(card.ownerId));
+              cursorRequest.onsuccess = () => {
+                  const cursor = cursorRequest.result;
+                  if (!cursor) {
+                      store.put(normalized);
+                      return;
+                  }
+                  const current = cursor.value as BankCard;
+                  if (current.id !== card.id && current.isDefault) cursor.update({ ...current, isDefault: false, updatedAt: card.updatedAt });
+                  cursor.continue();
+              };
+          } else {
+              store.put(normalized);
+          }
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => reject(transaction.error);
+          transaction.onabort = () => reject(transaction.error || new Error('saveBankCard aborted'));
+      });
+  },
+
+  deleteBankCard: async (id: string): Promise<void> => {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+          const transaction = db.transaction(STORE_BANK_CARDS, 'readwrite');
+          transaction.objectStore(STORE_BANK_CARDS).delete(id);
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => reject(transaction.error);
+          transaction.onabort = () => reject(transaction.error || new Error('deleteBankCard aborted'));
+      });
+  },
+
+  getCommerceOrder: async (id: string): Promise<CommerceOrder | null> => {
+      const db = await openDB();
+      if (!db.objectStoreNames.contains(STORE_COMMERCE_ORDERS)) return null;
+      return new Promise((resolve, reject) => {
+          const transaction = db.transaction(STORE_COMMERCE_ORDERS, 'readonly');
+          const request = transaction.objectStore(STORE_COMMERCE_ORDERS).get(id);
+          request.onsuccess = () => resolve((request.result as CommerceOrder | undefined) || null);
+          request.onerror = () => reject(request.error);
+      });
+  },
+
+  getCommerceOrders: async (filters: { payerOwnerId?: string; recipientOwnerId?: string; type?: CommerceOrderType } = {}): Promise<CommerceOrder[]> => {
+      const db = await openDB();
+      if (!db.objectStoreNames.contains(STORE_COMMERCE_ORDERS)) return [];
+      return new Promise((resolve, reject) => {
+          const transaction = db.transaction(STORE_COMMERCE_ORDERS, 'readonly');
+          const store = transaction.objectStore(STORE_COMMERCE_ORDERS);
+          const request = filters.payerOwnerId
+              ? store.index('payerOwnerId').getAll(IDBKeyRange.only(filters.payerOwnerId))
+              : filters.recipientOwnerId
+                  ? store.index('recipientOwnerId').getAll(IDBKeyRange.only(filters.recipientOwnerId))
+                  : filters.type
+                      ? store.index('type').getAll(IDBKeyRange.only(filters.type))
+                      : store.getAll();
+          request.onsuccess = () => {
+              const rows = (request.result || []) as CommerceOrder[];
+              resolve(rows.filter(order =>
+                  (!filters.payerOwnerId || order.payerOwnerId === filters.payerOwnerId)
+                  && (!filters.recipientOwnerId || order.recipientOwnerId === filters.recipientOwnerId)
+                  && (!filters.type || order.type === filters.type)
+              ).sort((a, b) => b.createdAt - a.createdAt));
+          };
+          request.onerror = () => reject(request.error);
+      });
+  },
+
+  /** 订单、扣卡、流水三者同事务落盘；任一校验失败会全部回滚。 */
+  checkoutCommerceOrder: async (draft: CommerceOrderDraft): Promise<CommerceCheckoutResult> => {
+      const order = prepareCommerceOrder(draft);
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+          const transaction = db.transaction([STORE_COMMERCE_ORDERS, STORE_BANK_CARDS, STORE_BANK_TX], 'readwrite');
+          const orderStore = transaction.objectStore(STORE_COMMERCE_ORDERS);
+          const cardStore = transaction.objectStore(STORE_BANK_CARDS);
+          const txStore = transaction.objectStore(STORE_BANK_TX);
+          let failure: Error | null = null;
+          let result: CommerceCheckoutResult | null = null;
+          const fail = (error: Error) => {
+              failure = error;
+              try { transaction.abort(); } catch { /* transaction may already be aborting */ }
+          };
+
+          const existingOrder = orderStore.get(order.id);
+          existingOrder.onsuccess = () => {
+              if (existingOrder.result) {
+                  fail(new CommerceError('DUPLICATE_ORDER', '该订单已经结账，不能重复扣款'));
+                  return;
+              }
+              const cardRequest = cardStore.get(order.cardId);
+              cardRequest.onsuccess = () => {
+                  const card = cardRequest.result as BankCard | undefined;
+                  if (!card) {
+                      fail(new CommerceError('CARD_NOT_FOUND', '没有找到付款银行卡'));
+                      return;
+                  }
+                  if (card.ownerId !== order.payerOwnerId) {
+                      fail(new CommerceError('CARD_OWNER_MISMATCH', '银行卡不属于订单付款人'));
+                      return;
+                  }
+                  const balance = Math.round(Number(card.balance || 0) * 100) / 100;
+                  if (balance < order.total) {
+                      fail(new CommerceError('INSUFFICIENT_BALANCE', '银行卡余额不足'));
+                      return;
+                  }
+
+                  const updatedCard: BankCard = {
+                      ...card,
+                      balance: Math.round((balance - order.total) * 100) / 100,
+                      updatedAt: Date.now(),
+                  };
+                  const bankTransaction = normalizeBankTransaction({
+                      id: `tx-order-${order.id}`,
+                      ownerId: order.payerOwnerId,
+                      amount: order.total,
+                      direction: 'expense',
+                      kind: order.source === 'llm' ? 'llm_purchase' : 'purchase',
+                      source: order.source === 'llm' ? 'llm' : order.type,
+                      sourceRef: `order:${order.id}`,
+                      cardId: order.cardId,
+                      category: order.type === 'delivery' ? 'food' : 'shopping',
+                      note: `${order.merchantName} · ${order.items.map(item => item.name).slice(0, 3).join('、')}`,
+                      timestamp: order.createdAt,
+                      dateStr: getLocalDateKey(new Date(order.createdAt)),
+                  });
+
+                  cardStore.put(updatedCard);
+                  txStore.put(bankTransaction);
+                  orderStore.put(order);
+                  result = { order, transaction: bankTransaction, card: updatedCard };
+              };
+          };
+
+          transaction.oncomplete = () => result ? resolve(result) : reject(new Error('checkoutCommerceOrder completed without result'));
+          transaction.onerror = () => reject(failure || transaction.error || new Error('checkoutCommerceOrder failed'));
+          transaction.onabort = () => reject(failure || transaction.error || new Error('checkoutCommerceOrder aborted'));
+      });
+  },
+
+  /** 退款与订单状态、银行卡余额、收入流水同事务更新，重复退款会被拒绝。 */
+  refundCommerceOrder: async (orderId: string): Promise<CommerceCheckoutResult> => {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+          const transaction = db.transaction([STORE_COMMERCE_ORDERS, STORE_BANK_CARDS, STORE_BANK_TX], 'readwrite');
+          const orderStore = transaction.objectStore(STORE_COMMERCE_ORDERS);
+          const cardStore = transaction.objectStore(STORE_BANK_CARDS);
+          const txStore = transaction.objectStore(STORE_BANK_TX);
+          let failure: Error | null = null;
+          let result: CommerceCheckoutResult | null = null;
+          const fail = (error: Error) => {
+              failure = error;
+              try { transaction.abort(); } catch { /* transaction may already be aborting */ }
+          };
+
+          const orderRequest = orderStore.get(orderId);
+          orderRequest.onsuccess = () => {
+              const order = orderRequest.result as CommerceOrder | undefined;
+              if (!order) {
+                  fail(new CommerceError('ORDER_NOT_FOUND', '没有找到要退款的订单'));
+                  return;
+              }
+              if (order.paymentStatus !== 'paid') {
+                  fail(new CommerceError('ORDER_NOT_REFUNDABLE', '订单已经退款或不能退款'));
+                  return;
+              }
+              const cardRequest = cardStore.get(order.cardId);
+              cardRequest.onsuccess = () => {
+                  const card = cardRequest.result as BankCard | undefined;
+                  if (!card) {
+                      fail(new CommerceError('CARD_NOT_FOUND', '原付款银行卡不存在，无法自动退款'));
+                      return;
+                  }
+                  if (card.ownerId !== order.payerOwnerId) {
+                      fail(new CommerceError('CARD_OWNER_MISMATCH', '原付款银行卡归属不匹配'));
+                      return;
+                  }
+                  const now = Date.now();
+                  const updatedOrder: CommerceOrder = { ...order, paymentStatus: 'refunded', refundedAt: now, updatedAt: now };
+                  const updatedCard: BankCard = {
+                      ...card,
+                      balance: Math.round((Number(card.balance || 0) + order.total) * 100) / 100,
+                      updatedAt: now,
+                  };
+                  const bankTransaction = normalizeBankTransaction({
+                      id: `tx-refund-${order.id}`,
+                      ownerId: order.payerOwnerId,
+                      amount: order.total,
+                      direction: 'income',
+                      kind: 'refund',
+                      source: order.type,
+                      sourceRef: `refund:${order.id}`,
+                      cardId: order.cardId,
+                      category: order.type === 'delivery' ? 'food' : 'shopping',
+                      note: `${order.merchantName}退款`,
+                      timestamp: now,
+                      dateStr: getLocalDateKey(new Date(now)),
+                  });
+
+                  orderStore.put(updatedOrder);
+                  cardStore.put(updatedCard);
+                  txStore.put(bankTransaction);
+                  result = { order: updatedOrder, transaction: bankTransaction, card: updatedCard };
+              };
+          };
+
+          transaction.oncomplete = () => result ? resolve(result) : reject(new Error('refundCommerceOrder completed without result'));
+          transaction.onerror = () => reject(failure || transaction.error || new Error('refundCommerceOrder failed'));
+          transaction.onabort = () => reject(failure || transaction.error || new Error('refundCommerceOrder aborted'));
+      });
+  },
+
+  getDeliveryAddresses: async (ownerId?: string): Promise<DeliveryAddress[]> => {
+      const db = await openDB();
+      if (!db.objectStoreNames.contains(STORE_DELIVERY_ADDRESSES)) return [];
+      return new Promise((resolve, reject) => {
+          const transaction = db.transaction(STORE_DELIVERY_ADDRESSES, 'readonly');
+          const store = transaction.objectStore(STORE_DELIVERY_ADDRESSES);
+          const request = ownerId ? store.index('ownerId').getAll(IDBKeyRange.only(ownerId)) : store.getAll();
+          request.onsuccess = () => resolve(((request.result || []) as DeliveryAddress[]).sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || b.updatedAt - a.updatedAt));
+          request.onerror = () => reject(request.error);
+      });
+  },
+
+  saveDeliveryAddress: async (address: DeliveryAddress): Promise<void> => {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+          const transaction = db.transaction(STORE_DELIVERY_ADDRESSES, 'readwrite');
+          const store = transaction.objectStore(STORE_DELIVERY_ADDRESSES);
+          if (address.isDefault) {
+              const cursorRequest = store.index('ownerId').openCursor(IDBKeyRange.only(address.ownerId));
+              cursorRequest.onsuccess = () => {
+                  const cursor = cursorRequest.result;
+                  if (!cursor) {
+                      store.put(address);
+                      return;
+                  }
+                  const current = cursor.value as DeliveryAddress;
+                  if (current.id !== address.id && current.isDefault) cursor.update({ ...current, isDefault: false, updatedAt: address.updatedAt });
+                  cursor.continue();
+              };
+          } else {
+              store.put(address);
+          }
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => reject(transaction.error);
+          transaction.onabort = () => reject(transaction.error || new Error('saveDeliveryAddress aborted'));
+      });
+  },
+
+  deleteDeliveryAddress: async (id: string): Promise<void> => {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+          const transaction = db.transaction(STORE_DELIVERY_ADDRESSES, 'readwrite');
+          transaction.objectStore(STORE_DELIVERY_ADDRESSES).delete(id);
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => reject(transaction.error);
+          transaction.onabort = () => reject(transaction.error || new Error('deleteDeliveryAddress aborted'));
+      });
   },
 
   // --- Songs (Songwriting App) ---
@@ -2977,7 +3320,7 @@ export const DB = {
           });
       };
 
-      const [characters, characterGroups, messages, themes, emojis, emojiCategories, assets, galleryImages, userProfiles, diaries, tasks, anniversaries, roomTodos, roomNotes, groups, journalStickers, socialPosts, courses, games, worldbooks, storyTheaters, storyTheaterPresets, storyTheaterMasks, novels, bankTx, bankData, xhsActivities, xhsOwnedPosts, xhsStockImages, songs, quizzes, guidebookSessions, scheduledMessages, lifeSimStates, handbooks, trackers, trackerEntries, hotNewsSnapshots, customCreatorParts, worlds, worldEpisodes, lifeRecords, medPlans, lifeRecordSettings] = await Promise.all([
+      const [characters, characterGroups, messages, themes, emojis, emojiCategories, assets, galleryImages, userProfiles, diaries, tasks, anniversaries, roomTodos, roomNotes, groups, journalStickers, socialPosts, courses, games, worldbooks, storyTheaters, storyTheaterPresets, storyTheaterMasks, novels, bankTx, bankData, bankCards, commerceOrders, deliveryAddresses, xhsActivities, xhsOwnedPosts, xhsStockImages, songs, quizzes, guidebookSessions, scheduledMessages, lifeSimStates, handbooks, trackers, trackerEntries, hotNewsSnapshots, customCreatorParts, worlds, worldEpisodes, lifeRecords, medPlans, lifeRecordSettings] = await Promise.all([
           getAllFromStore(STORE_CHARACTERS),
           getAllFromStore(STORE_CHAR_GROUPS),
           getAllFromStore(STORE_MESSAGES),
@@ -3004,6 +3347,9 @@ export const DB = {
           getAllFromStore(STORE_NOVELS),
           getAllFromStore(STORE_BANK_TX),
           getAllFromStore(STORE_BANK_DATA),
+          getAllFromStore(STORE_BANK_CARDS),
+          getAllFromStore(STORE_COMMERCE_ORDERS),
+          getAllFromStore(STORE_DELIVERY_ADDRESSES),
           getAllFromStore(STORE_XHS_ACTIVITIES),
           getAllFromStore(STORE_XHS_OWNED_POSTS),
           getAllFromStore(STORE_XHS_STOCK),
@@ -3037,7 +3383,10 @@ export const DB = {
           characters, characterGroups, messages, customThemes: themes, savedEmojis: emojis, emojiCategories, assets, galleryImages, userProfile, diaries, tasks, anniversaries, roomTodos, roomNotes, groups, savedJournalStickers: journalStickers, socialPosts, courses, games, worldbooks, storyTheaters, storyTheaterPresets, storyTheaterMasks, novels,
           bankState: mainState ? { ...mainState, id: undefined } : undefined,
           bankDollhouse: dollhouseRecord?.data || undefined,
-          bankTransactions: bankTx,
+          bankTransactions: bankTx.map((tx: BankTransaction) => normalizeBankTransaction(tx)),
+          bankCards,
+          commerceOrders,
+          deliveryAddresses,
           xhsActivities,
           xhsOwnedPosts,
           xhsStockImages,
@@ -3091,7 +3440,7 @@ export const DB = {
           STORE_ASSETS, STORE_GALLERY, STORE_USER, STORE_DIARIES,
           STORE_TASKS, STORE_ANNIVERSARIES, STORE_ROOM_TODOS, STORE_ROOM_NOTES,
           STORE_GROUPS, STORE_JOURNAL_STICKERS, STORE_SOCIAL_POSTS, STORE_COURSES, STORE_GAMES, STORE_WORLDBOOKS, STORE_STORY_THEATERS, STORE_STORY_THEATER_PRESETS, STORE_STORY_THEATER_MASKS, STORE_NOVELS, STORE_SONGS,
-          STORE_BANK_TX, STORE_BANK_DATA,
+          STORE_BANK_TX, STORE_BANK_DATA, STORE_BANK_CARDS, STORE_COMMERCE_ORDERS, STORE_DELIVERY_ADDRESSES,
           STORE_XHS_ACTIVITIES, STORE_XHS_OWNED_POSTS, STORE_XHS_STOCK,
           STORE_QUIZZES,
           STORE_GUIDEBOOK,
@@ -3174,6 +3523,9 @@ export const DB = {
           data.scheduledMessages !== undefined,
           data.lifeSimState !== undefined,
           data.bankTransactions !== undefined,
+          data.bankCards !== undefined,
+          data.commerceOrders !== undefined,
+          data.deliveryAddresses !== undefined,
           data.xhsActivities !== undefined,
           data.xhsStockImages !== undefined,
           data.memoryNodes !== undefined,
@@ -3519,9 +3871,26 @@ export const DB = {
           data.lifeSimState = undefined as any;
       }, data.lifeSimState ? 1 : 0);
       await runSection('银行流水', data.bankTransactions !== undefined, async () => {
-          await clearAndAdd(STORE_BANK_TX, data.bankTransactions, '银行流水', false);
+          await clearAndAdd(
+              STORE_BANK_TX,
+              data.bankTransactions?.map(tx => normalizeBankTransaction(tx)),
+              '银行流水',
+              false,
+          );
           data.bankTransactions = undefined as any;
       }, data.bankTransactions?.length || 0);
+      await runSection('银行卡', data.bankCards !== undefined, async () => {
+          await clearAndAdd(STORE_BANK_CARDS, data.bankCards, '银行卡', false);
+          data.bankCards = undefined as any;
+      }, data.bankCards?.length || 0);
+      await runSection('消费订单', data.commerceOrders !== undefined, async () => {
+          await clearAndAdd(STORE_COMMERCE_ORDERS, data.commerceOrders, '消费订单', false);
+          data.commerceOrders = undefined as any;
+      }, data.commerceOrders?.length || 0);
+      await runSection('收货地址', data.deliveryAddresses !== undefined, async () => {
+          await clearAndAdd(STORE_DELIVERY_ADDRESSES, data.deliveryAddresses, '收货地址', false);
+          data.deliveryAddresses = undefined as any;
+      }, data.deliveryAddresses?.length || 0);
       await runSection('小红书活动', data.xhsActivities !== undefined, async () => {
           await clearAndAdd(STORE_XHS_ACTIVITIES, data.xhsActivities, '小红书活动', false);
           data.xhsActivities = undefined as any;

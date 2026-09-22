@@ -5,7 +5,13 @@ import {
     LifeRecordSettings, MedPlan, Message,
 } from '../types';
 import { addLocalDays, getLocalDateKey } from './localDate';
-import { formatMoney, sumMoney } from './format';
+import { formatMoney } from './format';
+import {
+    USER_BANK_OWNER_ID,
+    formatSignedTransactionAmount,
+    sumTransactionExpenses,
+    sumTransactionIncome,
+} from './bankLedger';
 
 /**
  * 生活记录（档案 App：生理期 / 药盒 / 记账 / 锻炼）
@@ -18,7 +24,7 @@ import { formatMoney, sumMoney } from './format';
  *  3. 裁决：resolveLifeRecordCard —— 用户点卡片「确认 / 否决」，否决时回滚（含银行流水）
  *     并给代记角色挂一条一次性反馈（Chat.tsx 调用）。
  *
- * 记账不独立存储：角色代记的支出直接写 BankApp 的 bank_transactions（BankApp 每次打开
+ * 记账不独立存储：角色代记的收支直接写 BankApp 的 bank_transactions（BankApp 每次打开
  * 会从流水重算 todaySpent，所以这里只动流水即可），另落一条带 bankTxId 的 LifeRecord
  * 支撑卡片确认 / 否决回滚；注入摘要也直接读当日银行流水。
  */
@@ -177,7 +183,10 @@ export const summarizeLifeRecord = (module: LifeRecordModule, kind: string, payl
     switch (module) {
         case 'period': return kind === 'start' ? '生理期开始' : '生理期结束';
         case 'med': return `吃药 · ${payload.name || '药'}`;
-        case 'expense': return `支出 ${formatMoney(payload.amount)}${payload.note ? `（${payload.note}）` : ''}`;
+        case 'expense': {
+            const label = kind === 'refund' ? '退款' : kind === 'income' ? '收入' : '支出';
+            return `${label} ${formatMoney(payload.amount)}${payload.note ? `（${payload.note}）` : ''}`;
+        }
         case 'exercise': return `锻炼 · ${payload.activity || '运动'}${payload.duration ? ` ${payload.duration}` : ''}`;
     }
 };
@@ -282,25 +291,29 @@ const buildMedSummary = (
     return lines.join('\n');
 };
 
-/** absolute 见 buildPeriodSummary 的说明：写「哪天花了多少」而不是「今日支出」。 */
+/** absolute 见 buildPeriodSummary 的说明：写绝对日期，收支分开统计。 */
 const buildExpenseSummary = (txs: BankTransaction[], today: string, absolute = false): string => {
     if (absolute) {
         const recent = groupRecentByDate(txs, t => t.dateStr, today, 3);
-        if (recent.length === 0) return '- 记账：近期暂无支出记录。';
+        if (recent.length === 0) return '- 记账：近期暂无流水。';
         const parts = recent.map(({ date, items }) => {
-            const total = formatMoney(sumMoney(items.map(t => t.amount)));
-            const detail = items.slice(0, 5).map(t => `${t.note || '未备注'} ${formatMoney(t.amount)}`).join('、');
+            const expense = sumTransactionExpenses(items);
+            const income = sumTransactionIncome(items);
+            const totals = [expense > 0 ? `支出 ${formatMoney(expense)}` : '', income > 0 ? `收入 ${formatMoney(income)}` : ''].filter(Boolean).join('、');
+            const detail = items.slice(0, 5).map(t => `${t.note || '未备注'} ${formatSignedTransactionAmount(t, '¥')}`).join('、');
             const more = items.length > 5 ? ` 等 ${items.length} 笔` : '';
-            return `${fmtCN(date)} 共 ${items.length} 笔、合计 ${total}（${detail}${more}）`;
+            return `${fmtCN(date)} 共 ${items.length} 笔、${totals}（${detail}${more}）`;
         });
-        return `- 最近支出：${parts.join('；')}。`;
+        return `- 最近流水：${parts.join('；')}。`;
     }
     const todayTx = txs.filter(t => t.dateStr === today);
-    if (todayTx.length === 0) return '- 记账：今日暂无支出记录。';
-    const total = formatMoney(sumMoney(todayTx.map(t => t.amount)));
-    const items = todayTx.slice(0, 8).map(t => `${t.note || '未备注'} ${formatMoney(t.amount)}`).join('、');
+    if (todayTx.length === 0) return '- 记账：今日暂无流水。';
+    const expense = sumTransactionExpenses(todayTx);
+    const income = sumTransactionIncome(todayTx);
+    const totals = [expense > 0 ? `支出 ${formatMoney(expense)}` : '', income > 0 ? `收入 ${formatMoney(income)}` : ''].filter(Boolean).join('、');
+    const items = todayTx.slice(0, 8).map(t => `${t.note || '未备注'} ${formatSignedTransactionAmount(t, '¥')}`).join('、');
     const more = todayTx.length > 8 ? ` 等 ${todayTx.length} 笔` : '';
-    return `- 今日支出：共 ${todayTx.length} 笔、合计 ${total}（${items}${more}）。`;
+    return `- 今日流水：共 ${todayTx.length} 笔、${totals}（${items}${more}）。`;
 };
 
 /** 本周（周一起算）的起始日 */
@@ -388,7 +401,7 @@ export const buildLifeRecordInjection = async (
     const [records, plans, txs] = await Promise.all([
         DB.getAllLifeRecords().catch(() => [] as LifeRecord[]),
         moduleActive('med') ? DB.getAllMedPlans().catch(() => [] as MedPlan[]) : Promise.resolve([] as MedPlan[]),
-        moduleActive('expense') ? DB.getAllTransactions().catch(() => [] as BankTransaction[]) : Promise.resolve([] as BankTransaction[]),
+        moduleActive('expense') ? DB.getAllTransactions(USER_BANK_OWNER_ID).catch(() => [] as BankTransaction[]) : Promise.resolve([] as BankTransaction[]),
     ]);
 
     let s = `\n### ${userName} 的生活记录（潜意识背景）\n`;
@@ -417,7 +430,7 @@ export const buildLifeRecordInjection = async (
         tools.push(`- TA 明确说生理期来了 → \`[[LIFE:PERIOD_START]]\`；明确说结束了 → \`[[LIFE:PERIOD_END]]\``);
     }
     if (moduleActive('med')) tools.push(`- TA 明确说吃了什么药 → \`[[LIFE:MED|药名]]\``);
-    if (moduleActive('expense')) tools.push(`- TA 明确说花了多少钱买什么 → \`[[LIFE:EXPENSE|金额|用途]]\`（金额是纯数字）`);
+    if (moduleActive('expense')) tools.push(`- TA 明确说花了多少钱买什么 → \`[[LIFE:EXPENSE|金额|用途]]\`；明确说收到一笔钱 → \`[[LIFE:INCOME|金额|来源]]\`；明确说某笔消费退款到账 → \`[[LIFE:REFUND|金额|内容]]\`（金额都是纯数字）`);
     if (moduleActive('exercise')) tools.push(`- TA 明确说做了什么运动 → \`[[LIFE:EXERCISE|运动|时长]]\`（时长可省略）`);
     if (tools.length > 0 && !forFirePack) {
         s += `**代记工具**：只有当 ${userName} 在对话中**明确说出**以下事实时，才单独起一行输出对应指令、帮 TA 顺手记一笔（一次一条）：\n${tools.join('\n')}\n`;
@@ -467,6 +480,14 @@ const parseLifeDirective = (verb: string, args: string[]): LifeDirective | null 
             if (isNaN(amount) || amount <= 0) return null;
             return { module: 'expense', kind: 'expense', payload: { amount, note } };
         }
+        case 'INCOME':
+        case 'REFUND': {
+            const amount = parseFloat((args[0] || '').replace(/[^\d.]/g, ''));
+            const note = (args[1] || '').trim();
+            if (isNaN(amount) || amount <= 0) return null;
+            const kind = verb === 'REFUND' ? 'refund' : 'income';
+            return { module: 'expense', kind, payload: { amount, note } };
+        }
         case 'EXERCISE': {
             const activity = (args[0] || '').trim();
             const duration = (args[1] || '').trim();
@@ -512,10 +533,13 @@ const findDuplicate = async (
             // 超窗一律视为新的一笔（角色本来就能在注入的"今日流水"里看到旧账，提示词层自会克制）。
             const DUP_WINDOW_MS = 15 * 60 * 1000;
             const now = Date.now();
-            const txs = await DB.getAllTransactions().catch(() => [] as BankTransaction[]);
+            const txs = await DB.getAllTransactions(USER_BANK_OWNER_ID).catch(() => [] as BankTransaction[]);
+            const direction = d.kind === 'expense' ? 'expense' : 'income';
             const hit = txs.find(t =>
                 t.dateStr === today
                 && t.amount === d.payload.amount
+                && t.direction === direction
+                && (d.kind !== 'refund' || t.kind === 'refund')
                 && (t.note || '') === (d.payload.note || '')
                 // 老数据缺 timestamp 时保守按"重复"处理（回到旧行为），避免陈年脏数据被翻倍入账
                 && (typeof t.timestamp !== 'number' || now - t.timestamp <= DUP_WINDOW_MS));
@@ -630,7 +654,11 @@ export const executeLifeDirectives = async (
             if (d.module === 'expense') {
                 const tx: BankTransaction = {
                     id: `tx-life-${Date.now()}-${Math.floor(Math.random() * 1e4)}`,
+                    ownerId: USER_BANK_OWNER_ID,
                     amount: d.payload.amount,
+                    direction: d.kind === 'expense' ? 'expense' : 'income',
+                    kind: d.kind === 'refund' ? 'refund' : 'manual',
+                    source: 'life_record',
                     category: 'general',
                     note: d.payload.note || `${char.name}代记`,
                     timestamp: Date.now(),

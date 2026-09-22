@@ -12,12 +12,12 @@ describe('金额收敛到分位', () => {
 
     it('经典 0.1 + 0.2', () => {
         expect(sumMoney([0.1, 0.2])).toBe(0.3);
-        expect(formatMoney(0.1 + 0.2)).toBe('0.3');
+        expect(formatMoney(0.1 + 0.2)).toBe('0.30');
     });
 
     it('整数不带小数点，一位小数保持一位', () => {
-        expect(formatMoney(100)).toBe('100');
-        expect(formatMoney(7.9)).toBe('7.9');
+        expect(formatMoney(100)).toBe('100.00');
+        expect(formatMoney(7.9)).toBe('7.90');
         expect(formatMoney(11.36)).toBe('11.36');
     });
 
@@ -28,14 +28,14 @@ describe('金额收敛到分位', () => {
 
     it('空列表和坏值不炸', () => {
         expect(sumMoney([])).toBe(0);
-        expect(formatMoney(NaN)).toBe('0');
-        expect(formatMoney(Infinity)).toBe('0');
+        expect(formatMoney(NaN)).toBe('0.00');
+        expect(formatMoney(Infinity)).toBe('0.00');
         expect(sumMoney([1.5, NaN as unknown as number, 2])).toBe(3.5);
     });
 
     it('负数（退款）同样收敛', () => {
         expect(sumMoney([49.86, -7.9])).toBe(41.96);
-        expect(formatMoney(-0.1 - 0.2)).toBe('-0.3');
+        expect(formatMoney(-0.1 - 0.2)).toBe('-0.30');
     });
 });
 

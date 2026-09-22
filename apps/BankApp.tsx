@@ -13,12 +13,13 @@ import BankShopScene from '../components/bank/BankShopScene';
 import BankDollhouse from '../components/bank/BankDollhouse';
 import BankGameMenu from '../components/bank/BankGameMenu';
 import BankAnalytics from '../components/bank/BankAnalytics';
+import BankCardWallet from '../components/bank/BankCardWallet';
 import { SHOP_RECIPES, INITIAL_DOLLHOUSE } from '../components/bank/BankGameConstants';
 import { processImage } from '../utils/file';
 import { ContextBuilder } from '../utils/context';
 import { Coffee, ClipboardText, ChartBar, Coin, Target, UserCircle, BookOpen, Lightning, Storefront } from '@phosphor-icons/react';
 import { addLocalDays, getLocalDateKey } from '../utils/localDate';
-import { roundMoney, sumMoney } from '../utils/format';
+import { USER_BANK_OWNER_ID, sumTransactionExpenses } from '../utils/bankLedger';
 import { useLocalDateKey } from '../hooks/useLocalDateKey';
 import { trackEvent } from '../utils/analytics';
 
@@ -85,6 +86,7 @@ const BankApp: React.FC = () => {
     // Forms
     const [txAmount, setTxAmount] = useState('');
     const [txNote, setTxNote] = useState('');
+    const [txEntryType, setTxEntryType] = useState<'expense' | 'income' | 'refund'>('expense');
     const [goalName, setGoalName] = useState('');
     const [goalTarget, setGoalTarget] = useState('');
 
@@ -134,7 +136,7 @@ const BankApp: React.FC = () => {
     const loadData = async () => {
         setIsBankDataLoaded(false);
         const savedState = await DB.getBankState();
-        const txs = await DB.getAllTransactions();
+        const txs = await DB.getAllTransactions(USER_BANK_OWNER_ID);
 
         let currentState = savedState || INITIAL_STATE;
 
@@ -248,11 +250,11 @@ const BankApp: React.FC = () => {
             // Find yesterday's expenses to calculate AP
             const yesterdayStr = addLocalDays(today, -1);
 
-            const yesterTx = txs.filter(t => t.dateStr === yesterdayStr);
+            const yesterTx = txs.filter(t => t.dateStr === yesterdayStr && t.direction === 'expense');
             let gainedAP = 0;
 
             if (yesterTx.length > 0) {
-                const yesterSpent = yesterTx.reduce((sum, t) => sum + t.amount, 0);
+                const yesterSpent = sumTransactionExpenses(yesterTx);
                 // Core Mechanic: AP = Budget - Spent
                 gainedAP = Math.max(0, Math.floor(currentState.config.dailyBudget - yesterSpent));
             } else {
@@ -288,7 +290,7 @@ const BankApp: React.FC = () => {
         }
 
         const todayTx = txs.filter(t => t.dateStr === today);
-        const spent = sumMoney(todayTx.map(t => t.amount));
+        const spent = sumTransactionExpenses(todayTx);
         const appeal = calculateAppeal(currentState.shop.staff.length, currentState.shop.unlockedRecipes);
 
         const finalState = { ...currentState, todaySpent: spent, shop: { ...currentState.shop, appeal } };
@@ -312,14 +314,23 @@ const BankApp: React.FC = () => {
             return;
         }
         
-        const amount = parseFloat(txAmount);
+        const amount = Math.abs(parseFloat(txAmount));
+        if (!Number.isFinite(amount) || amount <= 0) {
+            addToast('请输入大于 0 的有效金额', 'error');
+            return;
+        }
         const today = getLocalDateKey();
+        const direction = txEntryType === 'expense' ? 'expense' : 'income';
         
         const newTx: BankTransaction = {
             id: `tx-${Date.now()}`,
+            ownerId: USER_BANK_OWNER_ID,
             amount,
+            direction,
+            kind: txEntryType === 'refund' ? 'refund' : 'manual',
+            source: 'manual',
             category: 'general',
-            note: txNote,
+            note: txNote.trim(),
             timestamp: Date.now(),
             dateStr: today
         };
@@ -328,22 +339,24 @@ const BankApp: React.FC = () => {
         trackEvent('记一笔账');
 
         const cur = stateRef.current;
-        const newSpent = roundMoney(cur.todaySpent + amount);
+        const nextTransactions = [newTx, ...transactions];
+        const newSpent = sumTransactionExpenses(nextTransactions.filter(tx => tx.dateStr === today));
         const newState = { ...cur, todaySpent: newSpent };
         stateRef.current = newState;
         setState(newState);
         await DB.saveBankState(newState);
 
-        setTransactions(prev => [newTx, ...prev]);
+        setTransactions(nextTransactions);
 
         setShowAddTxModal(false);
         setTxAmount('');
         setTxNote('');
+        setTxEntryType('expense');
 
-        if (newSpent > cur.config.dailyBudget) {
+        if (direction === 'expense' && newSpent > cur.config.dailyBudget) {
             addToast('⚠️ 警报：今日预算已超支！明天可能没有 AP 了...', 'info');
         } else {
-            addToast('记账成功', 'success');
+            addToast(txEntryType === 'expense' ? '支出已入账' : txEntryType === 'refund' ? '退款已入账' : '收入已入账', 'success');
         }
     };
 
@@ -354,17 +367,15 @@ const BankApp: React.FC = () => {
         trackEvent('删除一笔账');
 
         const cur = stateRef.current;
-        let newSpent = cur.todaySpent;
         const today = getLocalDateKey();
-        if (tx.dateStr === today) {
-            newSpent = Math.max(0, roundMoney(cur.todaySpent - tx.amount));
-        }
+        const remainingTransactions = transactions.filter(item => item.id !== id);
+        const newSpent = sumTransactionExpenses(remainingTransactions.filter(item => item.dateStr === today));
 
         const newState = { ...cur, todaySpent: newSpent };
         stateRef.current = newState;
         setState(newState);
         await DB.saveBankState(newState);
-        setTransactions(prev => prev.filter(t => t.id !== id));
+        setTransactions(remainingTransactions);
         addToast('记录已删除', 'success');
     };
 
@@ -868,7 +879,8 @@ ${previousGuestbook}
 
                 {/* 3. Analytics Report */}
                 {activeTab === 'report' && (
-                    <div className="flex-1 overflow-y-auto no-scrollbar">
+                    <div className="flex-1 overflow-y-auto no-scrollbar p-4">
+                        <BankCardWallet characters={characters} userProfile={userProfile} addToast={addToast} />
                         <BankAnalytics
                             transactions={transactions}
                             goals={state.goals}
@@ -1038,6 +1050,25 @@ ${previousGuestbook}
             }>
                 <div className="space-y-5">
                     <div>
+                        <label className="text-xs font-bold text-[#A1887F] uppercase tracking-wider mb-2 block">类型</label>
+                        <div className="grid grid-cols-3 gap-2 bg-[#FDF6E3] p-1.5 rounded-2xl border border-[#E8DCC8]">
+                            {([
+                                ['expense', '支出'],
+                                ['income', '收入'],
+                                ['refund', '退款'],
+                            ] as const).map(([value, label]) => (
+                                <button
+                                    key={value}
+                                    type="button"
+                                    onClick={() => setTxEntryType(value)}
+                                    className={`py-2.5 rounded-xl text-xs font-bold transition-all ${txEntryType === value ? 'bg-white text-[#5D4037] shadow-sm' : 'text-[#A1887F]'}`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    <div>
                         <label className="text-xs font-bold text-[#A1887F] uppercase tracking-wider mb-2 block">金额</label>
                         <div className="relative">
                             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#A1887F] text-lg font-bold">{state.config.currencySymbol}</span>
@@ -1056,7 +1087,7 @@ ${previousGuestbook}
                             value={txNote}
                             onChange={e => setTxNote(e.target.value)}
                             className="w-full bg-[#FDF6E3] border-2 border-[#E8DCC8] rounded-2xl px-4 py-4 text-base font-medium text-[#5D4037] focus:border-[#FF7043] outline-none transition-colors"
-                            placeholder="买什么了？"
+                            placeholder={txEntryType === 'expense' ? '买什么了？' : txEntryType === 'refund' ? '退了什么？' : '收入来源'}
                         />
                     </div>
                 </div>

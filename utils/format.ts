@@ -20,8 +20,11 @@ export const roundMoney = (value: number): number => {
 export const sumMoney = (values: number[]): number =>
   roundMoney(values.reduce((sum, v) => sum + (Number(v) || 0), 0));
 
-/** 金额显示：整数不带小数点，小数最多两位（49.859999… → 49.86，100 → 100） */
-export const formatMoney = (value: number): string => String(roundMoney(value));
+/** 金额统一显示两位小数并加千分位（49.859999… → 49.86，100 → 100.00） */
+export const formatMoney = (value: number): string => roundMoney(value).toLocaleString('zh-CN', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 
 /**
  * 分钟按小时显示：界面上给的是整档，但持久化里的值可能是导入的备份、

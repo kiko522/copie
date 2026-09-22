@@ -1,0 +1,123 @@
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Bank, CreditCard, Plus, Trash } from '@phosphor-icons/react';
+import type { BankCard, CharacterProfile, UserProfile } from '../../types';
+import { DB } from '../../utils/db';
+import { BANK_CARD_STYLES, DEFAULT_BANK_CARD_STYLE_ID } from '../../utils/bankCardStyles';
+import { formatMoney } from '../../utils/format';
+import Modal from '../os/Modal';
+
+const makeId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+interface Props {
+    characters: CharacterProfile[];
+    userProfile: UserProfile;
+    addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+}
+
+const BankCardWallet: React.FC<Props> = ({ characters, userProfile, addToast }) => {
+    const owners = useMemo(() => [
+        { id: 'user', name: userProfile.name || '我' },
+        ...characters.map(char => ({ id: char.id, name: char.name })),
+    ], [characters, userProfile.name]);
+    const [ownerId, setOwnerId] = useState('user');
+    const [cards, setCards] = useState<BankCard[]>([]);
+    const [showForm, setShowForm] = useState(false);
+    const [nickname, setNickname] = useState('日常卡');
+    const [issuerName, setIssuerName] = useState('城市生活银行');
+    const [last4, setLast4] = useState('0522');
+    const [balance, setBalance] = useState('500');
+    const [styleId, setStyleId] = useState(DEFAULT_BANK_CARD_STYLE_ID);
+
+    const loadCards = useCallback(async () => setCards(await DB.getBankCards(ownerId)), [ownerId]);
+    useEffect(() => { void loadCards(); }, [loadCards]);
+
+    const saveCard = async () => {
+        const value = Number(balance);
+        if (!nickname.trim() || !issuerName.trim() || !/^\d{4}$/.test(last4) || !Number.isFinite(value) || value < 0) {
+            addToast('请把卡名、机构、四位尾号和余额填写完整', 'error');
+            return;
+        }
+        const now = Date.now();
+        await DB.saveBankCard({
+            id: makeId('card'), ownerId, nickname: nickname.trim(), issuerName: issuerName.trim(),
+            network: 'unionpay', last4, styleId, balance: value, currency: 'CNY',
+            isDefault: cards.length === 0, createdAt: now, updatedAt: now,
+        });
+        await loadCards();
+        setShowForm(false);
+        addToast('银行卡已加入卡包', 'success');
+    };
+
+    const setDefault = async (card: BankCard) => {
+        await DB.saveBankCard({ ...card, isDefault: true, updatedAt: Date.now() });
+        await loadCards();
+    };
+
+    const deleteCard = async (card: BankCard) => {
+        if (!window.confirm(`删除“${card.nickname}”？已有订单的退款将无法自动退回这张卡。`)) return;
+        await DB.deleteBankCard(card.id);
+        await loadCards();
+        addToast('银行卡已删除', 'success');
+    };
+
+    return (
+        <section className="mb-4 rounded-2xl border border-[#E8DCC8] bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                    <div className="flex items-center gap-2 font-bold text-[#5D4037]"><CreditCard size={18} weight="fill" /> 卡包</div>
+                    <div className="mt-0.5 text-[10px] text-[#A1887F]">每个人的卡和流水分别保存</div>
+                </div>
+                <button onClick={() => setShowForm(true)} className="flex items-center gap-1 rounded-xl bg-[#6D4C41] px-3 py-2 text-xs font-bold text-white active:scale-95">
+                    <Plus size={14} weight="bold" /> 开卡
+                </button>
+            </div>
+
+            <div className="mb-3 flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+                {owners.map(owner => (
+                    <button key={owner.id} onClick={() => setOwnerId(owner.id)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${ownerId === owner.id ? 'bg-[#6D4C41] text-white' : 'bg-[#F5EFE6] text-[#8D6E63]'}`}>
+                        {owner.name}
+                    </button>
+                ))}
+            </div>
+
+            {cards.length === 0 ? (
+                <button onClick={() => setShowForm(true)} className="flex w-full flex-col items-center rounded-2xl border-2 border-dashed border-[#D7CCC8] py-7 text-[#A1887F]">
+                    <Bank size={28} /><span className="mt-2 text-xs font-bold">还没有银行卡，点这里开一张</span>
+                </button>
+            ) : (
+                <div className="space-y-3">
+                    {cards.map(card => {
+                        const style = BANK_CARD_STYLES.find(item => item.id === card.styleId) || BANK_CARD_STYLES[0];
+                        return <div key={card.id} className="relative overflow-hidden rounded-2xl p-4 shadow-md" style={{ background: style.background, color: style.foreground }}>
+                            <div className="flex items-start justify-between gap-3">
+                                <div><div className="text-[10px] font-bold uppercase tracking-widest opacity-70">{card.issuerName}</div><div className="mt-1 text-base font-black">{card.nickname}</div></div>
+                                <div className="flex gap-1">
+                                    {!card.isDefault && <button onClick={() => void setDefault(card)} className="rounded-full bg-white/20 px-2 py-1 text-[9px] font-bold">设为默认</button>}
+                                    {card.isDefault && <span className="rounded-full bg-white/20 px-2 py-1 text-[9px] font-bold">默认</span>}
+                                    <button onClick={() => void deleteCard(card)} aria-label="删除银行卡" className="rounded-full bg-black/10 p-1.5"><Trash size={12} /></button>
+                                </div>
+                            </div>
+                            <div className="mt-7 flex items-end justify-between"><div className="font-mono text-sm tracking-[0.22em]">•••• {card.last4}</div><div className="text-right"><div className="text-[9px] opacity-70">可用余额</div><div className="text-xl font-black">¥{formatMoney(card.balance)}</div></div></div>
+                        </div>;
+                    })}
+                </div>
+            )}
+
+            <Modal isOpen={showForm} title={`给${owners.find(owner => owner.id === ownerId)?.name || '我'}开卡`} onClose={() => setShowForm(false)} footer={
+                <button onClick={() => void saveCard()} className="w-full rounded-2xl bg-[#6D4C41] py-3.5 font-bold text-white">保存银行卡</button>
+            }>
+                <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
+                        <label className="text-xs font-bold text-[#8D6E63]">卡片昵称<input value={nickname} onChange={event => setNickname(event.target.value)} className="mt-1.5 w-full rounded-xl border border-[#E8DCC8] bg-[#FDF6E3] px-3 py-3 outline-none" /></label>
+                        <label className="text-xs font-bold text-[#8D6E63]">卡号尾号<input inputMode="numeric" maxLength={4} value={last4} onChange={event => setLast4(event.target.value.replace(/\D/g, '').slice(0, 4))} className="mt-1.5 w-full rounded-xl border border-[#E8DCC8] bg-[#FDF6E3] px-3 py-3 outline-none" /></label>
+                    </div>
+                    <label className="block text-xs font-bold text-[#8D6E63]">发卡机构<input value={issuerName} onChange={event => setIssuerName(event.target.value)} className="mt-1.5 w-full rounded-xl border border-[#E8DCC8] bg-[#FDF6E3] px-3 py-3 outline-none" /></label>
+                    <label className="block text-xs font-bold text-[#8D6E63]">初始余额<input type="number" min="0" step="0.01" value={balance} onChange={event => setBalance(event.target.value)} className="mt-1.5 w-full rounded-xl border border-[#E8DCC8] bg-[#FDF6E3] px-3 py-3 text-lg font-black outline-none" /></label>
+                    <div><div className="mb-2 text-xs font-bold text-[#8D6E63]">卡面</div><div className="grid grid-cols-2 gap-2">{BANK_CARD_STYLES.map(style => <button key={style.id} onClick={() => setStyleId(style.id)} className={`rounded-xl p-3 text-left text-xs font-bold ${styleId === style.id ? 'ring-2 ring-[#6D4C41] ring-offset-2' : ''}`} style={{ background: style.background, color: style.foreground }}>{style.name}</button>)}</div></div>
+                </div>
+            </Modal>
+        </section>
+    );
+};
+
+export default BankCardWallet;

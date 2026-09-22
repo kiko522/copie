@@ -22,6 +22,7 @@ export enum AppID {
   Worldbook = 'worldbook', 
   Novel = 'novel', 
   Bank = 'bank', // New App
+  Delivery = 'delivery', // 外卖 — 本地菜单、购物车、订单与配送进度
   XhsStock = 'xhs_stock', // XHS image stock for publishing
   SpecialMoments = 'special_moments', // Valentine's Day & future events
   XhsFreeRoam = 'xhs_free_roam', // Character autonomous XHS activity
@@ -1833,13 +1834,127 @@ export interface ChibiStudioData {
 }
 
 // --- BANK / SHOP GAME TYPES (NEW) ---
+export type BankTransactionDirection = 'expense' | 'income';
+export type BankTransactionKind = 'manual' | 'purchase' | 'refund' | 'llm_purchase' | 'adjustment';
+export type BankTransactionSource = 'manual' | 'life_record' | 'delivery' | 'shopping' | 'llm' | 'migration';
+
 export interface BankTransaction {
     id: string;
+    /** 'user' = 使用者本人；角色流水直接使用 CharacterProfile.id。 */
+    ownerId: string;
+    /** 金额始终保存正数，收支正负由 direction 决定。 */
     amount: number;
-    category: string; 
+    direction: BankTransactionDirection;
+    kind: BankTransactionKind;
+    source: BankTransactionSource;
+    /** 未来外卖/购物下单时记录实际扣款卡；手动记账可以不选卡。 */
+    cardId?: string;
+    /** 外部业务的稳定引用，例如 order:xxx；用于防止重复入账。 */
+    sourceRef?: string;
+    category: string;
     note: string;
     timestamp: number;
     dateStr: string; // YYYY-MM-DD
+}
+
+/**
+ * 本地虚拟银行卡。它不连接真实银行；styleId 只控制卡面，方便以后继续增加主题。
+ */
+export interface BankCard {
+    id: string;
+    ownerId: string;
+    nickname: string;
+    issuerName: string;
+    network: 'unionpay' | 'visa' | 'mastercard' | 'generic';
+    last4: string;
+    styleId: string;
+    balance: number;
+    currency: 'CNY';
+    isDefault: boolean;
+    createdAt: number;
+    updatedAt: number;
+}
+
+export interface BankCardStyle {
+    id: string;
+    name: string;
+    background: string;
+    foreground: string;
+    muted: string;
+}
+
+export type CommerceOrderType = 'delivery' | 'shopping';
+export type CommerceOrderSource = 'user' | 'check_phone' | 'llm';
+export type CommercePaymentStatus = 'paid' | 'refunded' | 'cancelled';
+
+export interface CommerceOrderItem {
+    productId: string;
+    skuId?: string;
+    name: string;
+    quantity: number;
+    unitPrice: number;
+    options?: string[];
+    /** 本地 SVG 模板或资源键，不保存易失效的远程商品图地址。 */
+    imageKey?: string;
+}
+
+export interface DeliveryAddress {
+    id: string;
+    ownerId: string;
+    label: string;
+    recipientName: string;
+    phone?: string;
+    addressLine: string;
+    latitude?: number;
+    longitude?: number;
+    isDefault: boolean;
+    createdAt: number;
+    updatedAt: number;
+}
+
+export interface CommerceOrder {
+    id: string;
+    type: CommerceOrderType;
+    payerOwnerId: string;
+    recipientOwnerId: string;
+    merchantId: string;
+    merchantName: string;
+    items: CommerceOrderItem[];
+    subtotal: number;
+    deliveryFee: number;
+    serviceFee: number;
+    discount: number;
+    total: number;
+    cardId: string;
+    deliveryAddress?: Omit<DeliveryAddress, 'createdAt' | 'updatedAt' | 'isDefault'>;
+    source: CommerceOrderSource;
+    paymentStatus: CommercePaymentStatus;
+    createdAt: number;
+    updatedAt: number;
+    refundedAt?: number;
+}
+
+export interface CommerceOrderDraft {
+    id: string;
+    type: CommerceOrderType;
+    payerOwnerId: string;
+    recipientOwnerId: string;
+    merchantId: string;
+    merchantName: string;
+    items: CommerceOrderItem[];
+    deliveryFee?: number;
+    serviceFee?: number;
+    discount?: number;
+    cardId: string;
+    deliveryAddress?: CommerceOrder['deliveryAddress'];
+    source: CommerceOrderSource;
+    createdAt?: number;
+}
+
+export interface CommerceCheckoutResult {
+    order: CommerceOrder;
+    transaction: BankTransaction;
+    card: BankCard;
 }
 
 export interface SavingsGoal {
@@ -3420,6 +3535,9 @@ export interface FullBackupData {
     bankState?: BankFullState;
     bankDollhouse?: DollhouseState;
     bankTransactions?: BankTransaction[];
+    bankCards?: BankCard[];
+    commerceOrders?: CommerceOrder[];
+    deliveryAddresses?: DeliveryAddress[];
 
     socialAppData?: {
         charHandles?: Record<string, SubAccount[]>;

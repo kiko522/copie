@@ -232,6 +232,16 @@ describe('executeLifeDirectives 代记指令', () => {
         expect(txs.some(t => t.id === rec.bankTxId)).toBe(false);
     });
 
+    it('INCOME / REFUND：角色可以代记收入，退款按收入入账', async () => {
+        const char = mkChar({ name: '会记账的角色' });
+        await executeLifeDirectives('到账了[[LIFE:INCOME|520|稿费]]', char, noToast);
+        await executeLifeDirectives('退款也到了[[LIFE:REFUND|18.8|退货]]', char, noToast);
+
+        const txs = await DB.getAllTransactions('user');
+        expect(txs.some(t => t.note === '稿费' && t.direction === 'income' && t.kind === 'manual' && t.source === 'life_record')).toBe(true);
+        expect(txs.some(t => t.note === '退货' && t.direction === 'income' && t.kind === 'refund' && t.source === 'life_record')).toBe(true);
+    });
+
     it('不在经期时收到 PERIOD_END：按"无需记录"处理，不写库', async () => {
         const char = mkChar();
         await executeLifeDirectives('[[LIFE:PERIOD_END]]', char, noToast);
@@ -420,7 +430,7 @@ describe('注入文本里的金额只到分位', () => {
             } as any);
         }
         const text = await buildLifeRecordInjection(char, '小明', { forFirePack: false });
-        expect(text).toContain('合计 49.86');
+        expect(text).toContain('支出 49.86');
         expect(text).not.toMatch(/\d+\.\d{3,}/);
     });
 });
