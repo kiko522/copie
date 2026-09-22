@@ -81,6 +81,7 @@ import { markAmsgStateDirty, markAmsgStateDirtyForAll } from '../utils/amsgState
 import { AMSG_INSTANT_CHAT_PENDING_EVENT, AMSG_INSTANT_CHAT_PENDING_LS_KEY, getInstantChatPending } from '../utils/amsgInstantChat';
 import { formatAmsgToolTrace } from '../utils/amsgToolTrace';
 import { formatHours } from '../utils/format';
+import { parseEmojiImportLine } from '../utils/emojiImport';
 import {
     VOICE_FAVORITES_CHANGED_EVENT,
     getVoiceFavorite,
@@ -2176,17 +2177,12 @@ const Chat: React.FC = () => {
         const targetCatId = activeCategory === 'default' ? undefined : activeCategory;
 
         for (const line of lines) {
-            const parts = line.split('--');
-            if (parts.length >= 2) {
-                const name = parts[0].trim();
-                const url = parts.slice(1).join('--').trim();
-                if (name && url) {
-                    // 粘进来的可能是 data: 图（复制粘贴的图片），也可能是图床外链。
-                    // 前者转成令牌只留二进制，后者是别人服务器上的地址，原样存。
-                    const stored = url.startsWith('data:') ? await migrateDataUrlToRef(url) : url;
-                    await DB.saveEmoji(name, stored, targetCatId);
-                }
-            }
+            const parsed = parseEmojiImportLine(line);
+            if (!parsed) continue;
+            // 粘进来的可能是 data: 图（复制粘贴的图片），也可能是图床外链。
+            // 前者转成令牌只留二进制，后者是别人服务器上的地址，原样存。
+            const stored = parsed.url.startsWith('data:') ? await migrateDataUrlToRef(parsed.url) : parsed.url;
+            await DB.saveEmoji(parsed.name, stored, targetCatId);
         }
         await loadEmojiData();
         markEmojiLibraryChanged();

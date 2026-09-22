@@ -382,7 +382,8 @@ const ChatModals: React.FC<ChatModalsProps> = ({
             >
                 <div className="space-y-3">
                     <p className="text-xs text-slate-400">表情将导入到你当前选中的分类。</p>
-                    <textarea value={emojiImportText} onChange={e => setEmojiImportText(e.target.value)} placeholder="Name--URL (每行一个)" className="w-full h-40 bg-slate-100 rounded-2xl p-4 resize-none" />
+                    <textarea value={emojiImportText} onChange={e => setEmojiImportText(e.target.value)} placeholder={'表情名称：图片直链\n每行一个'} className="w-full h-40 bg-slate-100 rounded-2xl p-4 resize-none" />
+                    <p className="text-[10px] text-slate-400">例如：开心：https://example.com/happy.png</p>
                 </div>
             </Modal>
 
