@@ -74,6 +74,9 @@ export type Directive =
   | { type: 'life_record'; body: string }
   // 分享热点卡片 [[NEWS_CARD: 来源|标题]] (来源可省略). body 原样带走, 客户端按 `|` 切。
   | { type: 'news_card'; body: string }
+  // 角色自主点外卖：worker 只结构化意图，不读取银行卡/余额，也不结账。
+  // intentId 由 agentic.ts 用 taskId + occurrenceMs 补成稳定键，模型标签里不接受自报 id。
+  | { type: 'delivery_order'; intentId?: string; addressId: string; storeId: string; items: Array<{ productId: string; quantity: number }> }
   // 写日记: 短形态 [[DIARY: title|content]] 或长形态 [[DIARY_START: title|mood]]\n content \n[[DIARY_END]],
   // 飞书同形态 (FS_ 前缀). title 可空 → 客户端兜底用 `${char.name}的日记 - M/D`. mood 可空.
   | { type: 'notion_write_diary'; title: string; content: string; mood?: string }
@@ -255,6 +258,24 @@ const SIDE_EFFECT_TAGS: SideEffectSpec[] = [
   {
     re: /\[\[NEWS_CARD:\s*([^\]]*?)\s*\]\]/g,
     toDirective: (m) => ({ type: 'news_card', body: m[1] }),
+  },
+  // [[DELIVERY_ORDER|address-id|store-id|product-id*2,other-id*1]]
+  // 这里只做无副作用的语法收敛；商品/地址/数量是否合法全部留给客户端最终闸门。
+  {
+    re: /\[\[DELIVERY_ORDER\s*\|\s*([^|\]]+)\s*\|\s*([^|\]]+)\s*\|\s*([^\]]+)\]\]/g,
+    toDirective: (m) => {
+      const items = m[3].split(',').map((part) => {
+        const match = part.trim().match(/^([^*\s]+)\s*\*\s*(\d+)$/);
+        return match ? { productId: match[1], quantity: Number(match[2]) } : null;
+      });
+      if (items.length === 0 || items.some((item) => item === null)) return null;
+      return {
+        type: 'delivery_order',
+        addressId: m[1].trim(),
+        storeId: m[2].trim(),
+        items: items as Array<{ productId: string; quantity: number }>,
+      };
+    },
   },
   // 写日记 — 长形态: [[DIARY_START: title|mood]]\n content \n[[DIARY_END]]
   // 短形态: [[DIARY: title|content]] 或 [[DIARY: content]] (无 title)

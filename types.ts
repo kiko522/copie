@@ -419,6 +419,11 @@ export interface ActiveMsg2CharacterConfig {
    * 可以只排程不即时，也可以只即时不排程。
    */
   instantChatEnabled?: boolean;
+  /**
+   * 角色自主点外卖的本地授权。云端只会产出商品/地址的结构化意图；真正的卡归属、
+   * 地址白名单、余额、冷却和目录价格仍由客户端在结账前复核。
+   */
+  deliveryAutonomy?: CharacterDeliveryAutonomyConfig;
   /** 多任务清单（用户在面板建的和角色用工具建的并存），见 utils/amsg2Tasks.ts。 */
   tasks?: ActiveMsg2TaskRecord[];
   /** ↓ 角色级共享设置（所有任务共用）。 */
@@ -433,6 +438,18 @@ export interface ActiveMsg2CharacterConfig {
   secondaryApi?: ActiveMsg2ApiConfig;
   lastSyncedAt?: number;
   lastError?: string;
+}
+
+export type CharacterDeliveryFrequency = 'rare' | 'normal' | 'often';
+
+export interface CharacterDeliveryAutonomyConfig {
+  enabled: boolean;
+  /** 必须是该角色自己的本地虚拟银行卡。 */
+  cardId?: string;
+  /** 用户逐项授权给这个角色使用的已知收货地址。 */
+  allowedAddressIds: string[];
+  /** 只是模型的倾向提示，不改变客户端的 24h/6h 安全上限。 */
+  frequency?: CharacterDeliveryFrequency;
 }
 
 /** 任务「没了」的回执台账（amsg-local IDB kv，按角色一条数组）。 */

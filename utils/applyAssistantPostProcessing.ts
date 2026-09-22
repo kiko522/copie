@@ -275,6 +275,7 @@ export type PostProcessDirective =
     // (LIFE → lifeRecords.executeLifeDirectives, NEWS_CARD → 落 news_card 消息)。
     | { type: 'life_record'; body: string }
     | { type: 'news_card'; body: string }
+    | { type: 'delivery_order'; intentId: string; addressId: string; storeId: string; items: Array<{ productId: string; quantity: number }> }
     // Notion / 飞书 写日记 — worker classifier 提取 title/content/mood, 我们拼回原 tag 给
     // line 465 (Notion) / 649 (飞书) 既有 handler 跑. title 可空, 客户端兜底.
     | { type: 'notion_write_diary'; title: string; content: string; mood?: string }

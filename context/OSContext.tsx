@@ -1997,6 +1997,10 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           setActiveCharacterId(charId);
       };
 
+      const deliveryOrderOpenHandler = () => {
+          setActiveApp(AppID.Delivery);
+      };
+
       const onVisible = () => {
           if (document.visibilityState !== 'visible') return;
           if (awayActiveMsgCount > 0) {
@@ -2147,6 +2151,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
       window.addEventListener('active-msg-backfill-stale', backfillStaleHandler);
       window.addEventListener('active-msg-progress', progressHandler);
       window.addEventListener('active-msg-open', openHandler);
+      window.addEventListener('delivery-order-open', deliveryOrderOpenHandler);
       window.addEventListener('emotion-updated', buffSyncHandler);
       window.addEventListener(CHAT_GEN_EVENTS.replyArrived, chatReplyArrivedHandler);
       window.addEventListener(CHAT_GEN_EVENTS.replyEnd, chatReplyEndHandler);
@@ -2159,6 +2164,7 @@ export const OSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
           window.removeEventListener('active-msg-backfill-stale', backfillStaleHandler);
           window.removeEventListener('active-msg-progress', progressHandler);
           window.removeEventListener('active-msg-open', openHandler);
+          window.removeEventListener('delivery-order-open', deliveryOrderOpenHandler);
           window.removeEventListener('emotion-updated', buffSyncHandler);
           window.removeEventListener(CHAT_GEN_EVENTS.replyArrived, chatReplyArrivedHandler);
           window.removeEventListener(CHAT_GEN_EVENTS.replyEnd, chatReplyEndHandler);

@@ -13,6 +13,7 @@ import { formatMoney, sumMoney } from '../utils/format';
 import DeliveryProductArt from '../components/delivery/DeliveryProductArt';
 import Modal from '../components/os/Modal';
 import TokenImg from '../components/os/TokenImg';
+import { consumeDeliveryOrderOpen } from '../utils/deliveryLaunch';
 
 type View = 'home' | 'store' | 'checkout' | 'orders' | 'order';
 type CartState = Record<string, Record<string, number>>;
@@ -46,6 +47,7 @@ const DeliveryApp: React.FC = () => {
     const [recipientOwnerId, setRecipientOwnerId] = useState('user');
     const [addresses, setAddresses] = useState<DeliveryAddress[]>([]);
     const [cards, setCards] = useState<BankCard[]>([]);
+    const [allCards, setAllCards] = useState<BankCard[]>([]);
     const [orders, setOrders] = useState<CommerceOrder[]>([]);
     const [selectedAddressId, setSelectedAddressId] = useState('');
     const [selectedCardId, setSelectedCardId] = useState('');
@@ -63,14 +65,30 @@ const DeliveryApp: React.FC = () => {
 
     const loadCommerce = useCallback(async () => {
         const [nextAddresses, nextCards, nextOrders] = await Promise.all([
-            DB.getDeliveryAddresses(), DB.getBankCards('user'), DB.getCommerceOrders({ type: 'delivery' }),
+            DB.getDeliveryAddresses(), DB.getBankCards(), DB.getCommerceOrders({ type: 'delivery' }),
         ]);
         setAddresses(nextAddresses);
-        setCards(nextCards);
+        setAllCards(nextCards);
+        setCards(nextCards.filter((card) => card.ownerId === 'user'));
         setOrders(nextOrders);
     }, []);
 
     useEffect(() => { void loadCommerce(); }, [loadCommerce]);
+    useEffect(() => {
+        const openRequestedOrder = (event?: Event) => {
+            const fromEvent = (event as CustomEvent<{ orderId?: string }> | undefined)?.detail?.orderId;
+            // 即使应用已经挂载、订单号直接来自事件，也要把待消费槽清掉，避免下次打开
+            // 外卖 App 时又跳回旧订单。
+            const pendingOrderId = consumeDeliveryOrderOpen();
+            const orderId = fromEvent || pendingOrderId;
+            if (!orderId) return;
+            setSelectedOrderId(orderId);
+            setView('order');
+        };
+        openRequestedOrder();
+        window.addEventListener('delivery-order-open', openRequestedOrder);
+        return () => window.removeEventListener('delivery-order-open', openRequestedOrder);
+    }, []);
     useEffect(() => {
         const timer = window.setInterval(() => setNow(Date.now()), 30_000);
         return () => window.clearInterval(timer);
@@ -305,7 +323,7 @@ const DeliveryApp: React.FC = () => {
                 </section>
                 <section className="mt-3 rounded-2xl bg-white p-4 shadow-sm"><div className="flex items-start gap-2"><MapPin size={17} weight="fill" className="mt-0.5 shrink-0 text-[#ff7a18]" /><div><div className="text-xs font-black text-slate-800">{selectedOrder.deliveryAddress?.recipientName || '收货人'}</div><div className="mt-1 text-[11px] leading-relaxed text-slate-500">{selectedOrder.deliveryAddress?.addressLine || '未保存地址'}</div></div></div></section>
                 <section className="mt-3 rounded-2xl bg-white p-4 shadow-sm"><h3 className="text-sm font-black text-slate-800">{selectedOrder.merchantName}</h3><div className="mt-3 space-y-3">{selectedOrder.items.map(item => <div key={`${item.productId}-${item.skuId || ''}`} className="flex items-center gap-3">{item.imageKey && <DeliveryProductArt imageKey={item.imageKey} className="h-12 w-12 rounded-xl" />}<div className="min-w-0 flex-1"><div className="truncate text-xs font-bold text-slate-700">{item.name}</div><div className="mt-0.5 text-[10px] text-slate-400">× {item.quantity}</div></div><span className="text-xs font-bold">¥{formatMoney(item.unitPrice * item.quantity)}</span></div>)}</div><div className="mt-4 border-t border-dashed border-slate-200 pt-3"><div className="flex justify-between text-xs text-slate-500"><span>配送费</span><span>¥{formatMoney(selectedOrder.deliveryFee)}</span></div><div className="mt-2 flex justify-between"><span className="text-sm font-black">实付</span><span className="text-lg font-black text-[#ff5a1f]">¥{formatMoney(selectedOrder.total)}</span></div></div></section>
-                <section className="mt-3 rounded-2xl bg-white p-4 text-[11px] text-slate-500 shadow-sm"><div className="flex justify-between py-1"><span>订单编号</span><span className="max-w-[62%] truncate font-mono">{selectedOrder.id}</span></div><div className="flex justify-between py-1"><span>下单时间</span><span>{new Date(selectedOrder.createdAt).toLocaleString('zh-CN')}</span></div><div className="flex justify-between py-1"><span>付款卡</span><span>尾号 {cards.find(card => card.id === selectedOrder.cardId)?.last4 || '已移除'}</span></div></section>
+                <section className="mt-3 rounded-2xl bg-white p-4 text-[11px] text-slate-500 shadow-sm"><div className="flex justify-between py-1"><span>订单编号</span><span className="max-w-[62%] truncate font-mono">{selectedOrder.id}</span></div><div className="flex justify-between py-1"><span>下单时间</span><span>{new Date(selectedOrder.createdAt).toLocaleString('zh-CN')}</span></div><div className="flex justify-between py-1"><span>付款卡</span><span>尾号 {allCards.find(card => card.id === selectedOrder.cardId)?.last4 || '已移除'}</span></div></section>
                 {selectedOrder.paymentStatus === 'paid' && <button onClick={() => void refundOrder(selectedOrder)} className="mt-4 w-full rounded-2xl border border-slate-200 bg-white py-3 text-xs font-bold text-slate-500">申请退款</button>}
             </div>
         </>;

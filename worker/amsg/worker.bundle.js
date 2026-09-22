@@ -3,7 +3,7 @@
 // worker/amsg/src/index.ts
 import { DurableObject } from "cloudflare:workers";
 
-// node_modules/.pnpm/@rei-standard+amsg-server@2.6.0-next.29_@neondatabase+serverless@1.1.0_pg@8.22.0/node_modules/@rei-standard/amsg-server/dist/chunk-GN44PST5.mjs
+// node_modules/.pnpm/@rei-standard+amsg-server@2_de36efb7a5be7a7b73cb2d3408de932b/node_modules/@rei-standard/amsg-server/dist/chunk-GN44PST5.mjs
 var UPDATABLE_COLUMNS = /* @__PURE__ */ new Set([
   "user_id",
   "uuid",
@@ -1215,7 +1215,7 @@ function stringifyDecisionForError(value) {
   }
 }
 
-// node_modules/.pnpm/@rei-standard+amsg-server@2.6.0-next.29_@neondatabase+serverless@1.1.0_pg@8.22.0/node_modules/@rei-standard/amsg-server/dist/chunk-IDQPG2GZ.mjs
+// node_modules/.pnpm/@rei-standard+amsg-server@2_de36efb7a5be7a7b73cb2d3408de932b/node_modules/@rei-standard/amsg-server/dist/chunk-IDQPG2GZ.mjs
 var DAY_MS = 24 * 60 * 60 * 1e3;
 var MAX_LISTED_SKIPPED_OCCURRENCES = 32;
 var MAX_ADJUST_STEPS = 32;
@@ -12792,6 +12792,24 @@ var SIDE_EFFECT_TAGS = [
     re: /\[\[NEWS_CARD:\s*([^\]]*?)\s*\]\]/g,
     toDirective: (m) => ({ type: "news_card", body: m[1] })
   },
+  // [[DELIVERY_ORDER|address-id|store-id|product-id*2,other-id*1]]
+  // 这里只做无副作用的语法收敛；商品/地址/数量是否合法全部留给客户端最终闸门。
+  {
+    re: /\[\[DELIVERY_ORDER\s*\|\s*([^|\]]+)\s*\|\s*([^|\]]+)\s*\|\s*([^\]]+)\]\]/g,
+    toDirective: (m) => {
+      const items = m[3].split(",").map((part) => {
+        const match = part.trim().match(/^([^*\s]+)\s*\*\s*(\d+)$/);
+        return match ? { productId: match[1], quantity: Number(match[2]) } : null;
+      });
+      if (items.length === 0 || items.some((item) => item === null)) return null;
+      return {
+        type: "delivery_order",
+        addressId: m[1].trim(),
+        storeId: m[2].trim(),
+        items
+      };
+    }
+  },
   // 写日记 — 长形态: [[DIARY_START: title|mood]]\n content \n[[DIARY_END]]
   // 短形态: [[DIARY: title|content]] 或 [[DIARY: content]] (无 title)
   // 行为跟 applyAssistantPostProcessing.ts:465-495 字节对齐:
@@ -12946,6 +12964,16 @@ function attachSceneSong(directives, sceneSong) {
   if (!sceneSong) return directives;
   return directives.map((d) => d.type === "music_action" ? { ...d, song: sceneSong } : d);
 }
+function attachDeliveryIntentId(directives, taskId, occurrenceMs) {
+  const baseId = `${taskId || "task-missing"}-${Math.trunc(occurrenceMs)}`;
+  let deliveryIndex = 0;
+  return directives.map((directive) => {
+    if (directive.type !== "delivery_order") return directive;
+    const intentId = `${baseId}-${deliveryIndex}`;
+    deliveryIndex += 1;
+    return { ...directive, intentId };
+  });
+}
 var resolveNativeFireToolName = (raw, manageToolNames, mcpResolve) => {
   const candidates = [raw];
   const lastSegment = raw.split(/[:./]/).pop();
@@ -13021,10 +13049,10 @@ function processLLMRound(state, llmOutputText, build, mcp, schedule, iteration, 
   const fullText = [...state.narrations, thisRound].filter((part) => part.trim().length > 0).join("\n");
   const finalScan = fullText === scanText ? result : classifyLLMOutput(fullText);
   const cleanedText = finalScan.kind === "finish" ? finalScan.cleanedText : finalScan.prefix;
-  const directives = attachSceneSong(
+  const directives = attachDeliveryIntentId(attachSceneSong(
     finalScan.kind === "finish" ? finalScan.directives : [],
     build.sceneSong
-  );
+  ), build.taskId, build.occurrenceMs);
   const xhsSession = buildXhsSessionPayload(
     directives,
     state.xhsShareNotes ?? build.xhsNotes,

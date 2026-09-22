@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CaretDown, Check, CopySimple } from '@phosphor-icons/react';
+import { requestDeliveryOrderOpen } from '../../utils/deliveryLaunch';
 
 /**
  * HTML 卡片渲染（私聊 MessageItem 与群聊 GroupMessageItem 共用）。
@@ -75,6 +76,18 @@ const HtmlCard: React.FC<{ html: string }> = ({ html }) => {
                         const f = e.currentTarget as HTMLIFrameElement & { __htmlCardRO?: ResizeObserver };
                         const doc = f.contentDocument;
                         if (!doc || !doc.body) return;
+                        // HTML 本身仍然完全禁脚本。唯一开放的动作是固定协议下的订单详情跳转；
+                        // 其它 href 不会被解释成应用命令，更不能借 data-* 执行任意函数。
+                        const onCardClick = (event: Event) => {
+                            const target = event.target instanceof Element ? event.target.closest('a') : null;
+                            const href = target?.getAttribute('href') || '';
+                            const prefix = 'sully://delivery/order/';
+                            if (!href.startsWith(prefix)) return;
+                            event.preventDefault();
+                            event.stopPropagation();
+                            try { requestDeliveryOrderOpen(decodeURIComponent(href.slice(prefix.length))); } catch { /* malformed link */ }
+                        };
+                        doc.addEventListener('click', onCardClick);
                         // 量内容真实高度并把 iframe 调成等高，避免内部滚动。
                         // 上限放宽到 2400，足够长卡片完整展开；真正超长的才会兜底滚动。
                         const fit = () => {

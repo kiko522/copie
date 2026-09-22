@@ -13,6 +13,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildXhsSessionPayload,
+  attachDeliveryIntentId,
   classifyNativeToolCalls,
   createFireSessionState,
   DEFAULT_TOOL_ITERATIONS,
@@ -36,6 +37,25 @@ const build: PushBuildInput = {
   metadata: { charId: 'char-1', amsgMode: 'auto' },
   occurrenceMs: Date.UTC(2026, 6, 21, 1, 0),
 };
+
+describe('attachDeliveryIntentId', () => {
+  it('同一任务 occurrence 在重试时得到同一个稳定键', () => {
+    const directive = { type: 'delivery_order' as const, addressId: 'a1', storeId: 's1', items: [{ productId: 'p1', quantity: 1 }] };
+    const first = attachDeliveryIntentId([directive], 'task-7', 1_900_000_000_000);
+    const retried = attachDeliveryIntentId([directive], 'task-7', 1_900_000_000_000);
+    expect(first).toEqual(retried);
+    expect(first[0]).toMatchObject({ type: 'delivery_order', intentId: 'task-7-1900000000000-0' });
+  });
+
+  it('同一次 occurrence 意外出现多个点单意图时也不会共用主键', () => {
+    const first = { type: 'delivery_order' as const, addressId: 'a1', storeId: 's1', items: [{ productId: 'p1', quantity: 1 }] };
+    const second = { type: 'delivery_order' as const, addressId: 'a1', storeId: 's1', items: [{ productId: 'p2', quantity: 1 }] };
+    expect(attachDeliveryIntentId([first, second], 'task-7', 1_900_000_000_000)).toMatchObject([
+      { intentId: 'task-7-1900000000000-0' },
+      { intentId: 'task-7-1900000000000-1' },
+    ]);
+  });
+});
 
 describe('processLLMRound — 纯文本 finish', () => {
   it('按换行分段成多条 scheduled push，业务字段形状与 v1 一致 + notification banner', () => {
