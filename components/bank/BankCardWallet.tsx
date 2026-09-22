@@ -13,6 +13,15 @@ const CardArtwork: React.FC<{ style: BankCardStyle; preview?: boolean }> = ({ st
     const { artwork } = style;
     const isCalebReference = artwork.layout === 'caleb-reference';
     const isUserSuicaReference = artwork.layout === 'user-suica-reference';
+    const isUserSuicaFlat = artwork.layout === 'user-suica-flat';
+
+    if (isUserSuicaFlat) {
+        return (
+            <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+                <img src={artwork.backgroundImage} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            </div>
+        );
+    }
 
     if (isUserSuicaReference) {
         const outlineStyle = {
@@ -185,13 +194,15 @@ const BankCardWallet: React.FC<Props> = ({ characters, userProfile, addToast }) 
                         const style = BANK_CARD_STYLES.find(item => item.id === card.styleId) || BANK_CARD_STYLES[0];
                         const isCalebReference = style.artwork?.layout === 'caleb-reference';
                         const isUserSuicaReference = style.artwork?.layout === 'user-suica-reference';
+                        const isUserSuicaFlat = style.artwork?.layout === 'user-suica-flat';
+                        const isUserSuicaArtwork = isUserSuicaReference || isUserSuicaFlat;
                         return <div key={card.id} className="relative aspect-[1.586/1] overflow-hidden rounded-2xl p-4 shadow-md" style={{ background: style.background, color: style.foreground }}>
                             <CardArtwork style={style} />
-                            {style.artwork && !isCalebReference && !isUserSuicaReference && <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#020817]/70 via-transparent to-[#020817]/20" aria-hidden="true" />}
+                            {style.artwork && !isCalebReference && !isUserSuicaArtwork && <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#020817]/70 via-transparent to-[#020817]/20" aria-hidden="true" />}
                             <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-inset ring-white/20" aria-hidden="true" />
                             <div className="relative z-10 flex h-full flex-col justify-between">
-                            <div className={`flex items-start gap-3 ${isUserSuicaReference ? 'justify-start' : 'justify-between'}`}>
-                                {isCalebReference || isUserSuicaReference ? <div /> : style.artwork ? (
+                            <div className={`flex items-start gap-3 ${isUserSuicaArtwork ? 'justify-start' : 'justify-between'}`}>
+                                {isCalebReference || isUserSuicaArtwork ? <div /> : style.artwork ? (
                                     <div className="drop-shadow-[0_2px_5px_rgba(0,0,0,.7)]">
                                         <div className="select-none text-[26px] font-black italic leading-none tracking-[-0.1em]" aria-label="Visa">VISA</div>
                                         <div className="mt-2 inline-flex items-baseline gap-1.5 rounded-lg bg-black/15 px-2 py-1 backdrop-blur-[2px]"><span className="text-[8px] opacity-70">余额</span><span className="text-sm font-black">¥{formatMoney(card.balance)}</span></div>
@@ -206,7 +217,7 @@ const BankCardWallet: React.FC<Props> = ({ characters, userProfile, addToast }) 
                                     <button onClick={() => void deleteCard(card)} aria-label="删除银行卡" className="rounded-full bg-black/25 p-1.5 backdrop-blur-sm"><Trash size={12} /></button>
                                 </div>
                             </div>
-                            {isUserSuicaReference ? (
+                            {isUserSuicaArtwork ? (
                                 <div />
                             ) : isCalebReference ? (
                                 <div className="flex items-end justify-between text-white drop-shadow-[0_1px_2px_rgba(0,0,0,.28)]">
