@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bank, CreditCard, Palette, Plus, Trash } from '@phosphor-icons/react';
 import type { BankCard, BankCardStyle, CharacterProfile, UserProfile } from '../../types';
 import { DB } from '../../utils/db';
-import { BANK_CARD_STYLES, DEFAULT_BANK_CARD_STYLE_ID, XIA_YIZHOU_CARD_STYLE_ID } from '../../utils/bankCardStyles';
+import { BANK_CARD_STYLES, DEFAULT_BANK_CARD_STYLE_ID, isXiaYizhouCardStyle } from '../../utils/bankCardStyles';
 import { formatMoney } from '../../utils/format';
 import Modal from '../os/Modal';
 
@@ -11,6 +11,26 @@ const makeId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.
 const CardArtwork: React.FC<{ style: BankCardStyle; preview?: boolean }> = ({ style, preview = false }) => {
     if (!style.artwork) return null;
     const { artwork } = style;
+    const isCalebReference = artwork.layout === 'caleb-reference';
+
+    if (isCalebReference) {
+        const outlineStyle = { WebkitTextStroke: preview ? '0.7px #fff' : '1.25px #fff', color: 'transparent' };
+        return (
+            <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+                <img src={artwork.backgroundImage} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                {artwork.portraitImage && <img src={artwork.portraitImage} alt="" className={`absolute object-contain object-bottom ${preview ? 'bottom-[-15%] right-[-8%] h-[156%] w-[91%]' : 'bottom-[-17%] right-[-9%] h-[168%] w-[94%]'}`} />}
+                <div className={`absolute left-[24%] top-[6%] flex items-baseline leading-none text-white drop-shadow-[0_1px_2px_rgba(0,0,0,.16)] ${preview ? 'text-[19px]' : 'text-[36px]'}`}>
+                    <span className="font-serif font-normal" style={outlineStyle}>C</span>
+                    <span className="ml-[1px] font-sans font-black">a</span>
+                    <span className="ml-[1px] font-mono font-light" style={outlineStyle}>l</span>
+                    <span className="ml-[1px] font-serif font-black italic">e</span>
+                    <span className="ml-[1px] font-sans font-black" style={outlineStyle}>b</span>
+                </div>
+                {artwork.primarySignatureImage && <img src={artwork.primarySignatureImage} alt="" className={`absolute left-[5%] top-[32%] object-contain brightness-0 invert ${preview ? 'w-[29%]' : 'w-[32%]'}`} />}
+                {artwork.secondarySignatureImage && <img src={artwork.secondarySignatureImage} alt="" className={`absolute left-[7%] top-[58%] object-contain brightness-0 invert ${preview ? 'w-[25%]' : 'w-[28%]'}`} />}
+            </div>
+        );
+    }
 
     return (
         <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
@@ -74,7 +94,7 @@ const BankCardWallet: React.FC<Props> = ({ characters, userProfile, addToast }) 
         const now = Date.now();
         await DB.saveBankCard({
             id: makeId('card'), ownerId, nickname: nickname.trim(), issuerName: issuerName.trim(),
-            network: styleId === XIA_YIZHOU_CARD_STYLE_ID ? 'visa' : 'unionpay', last4, styleId, balance: value, currency: 'CNY',
+            network: isXiaYizhouCardStyle(styleId) ? 'visa' : 'unionpay', last4, styleId, balance: value, currency: 'CNY',
             isDefault: cards.length === 0, createdAt: now, updatedAt: now,
         });
         await loadCards();
@@ -99,8 +119,8 @@ const BankCardWallet: React.FC<Props> = ({ characters, userProfile, addToast }) 
         await DB.saveBankCard({
             ...stylingCard,
             styleId: nextStyleId,
-            network: nextStyleId === XIA_YIZHOU_CARD_STYLE_ID ? 'visa' : stylingCard.network,
-            last4: nextStyleId === XIA_YIZHOU_CARD_STYLE_ID ? '0613' : stylingCard.last4,
+            network: isXiaYizhouCardStyle(nextStyleId) ? 'visa' : stylingCard.network,
+            last4: isXiaYizhouCardStyle(nextStyleId) ? '0613' : stylingCard.last4,
             updatedAt: Date.now(),
         });
         await loadCards();
@@ -136,13 +156,14 @@ const BankCardWallet: React.FC<Props> = ({ characters, userProfile, addToast }) 
                 <div className="space-y-3">
                     {cards.map(card => {
                         const style = BANK_CARD_STYLES.find(item => item.id === card.styleId) || BANK_CARD_STYLES[0];
+                        const isCalebReference = style.artwork?.layout === 'caleb-reference';
                         return <div key={card.id} className="relative aspect-[1.586/1] overflow-hidden rounded-2xl p-4 shadow-md" style={{ background: style.background, color: style.foreground }}>
                             <CardArtwork style={style} />
-                            {style.artwork && <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#020817]/70 via-transparent to-[#020817]/20" aria-hidden="true" />}
+                            {style.artwork && !isCalebReference && <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#020817]/70 via-transparent to-[#020817]/20" aria-hidden="true" />}
                             <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-inset ring-white/20" aria-hidden="true" />
                             <div className="relative z-10 flex h-full flex-col justify-between">
                             <div className="flex items-start justify-between gap-3">
-                                {style.artwork ? (
+                                {isCalebReference ? <div /> : style.artwork ? (
                                     <div className="drop-shadow-[0_2px_5px_rgba(0,0,0,.7)]">
                                         <div className="select-none text-[26px] font-black italic leading-none tracking-[-0.1em]" aria-label="Visa">VISA</div>
                                         <div className="mt-2 inline-flex items-baseline gap-1.5 rounded-lg bg-black/15 px-2 py-1 backdrop-blur-[2px]"><span className="text-[8px] opacity-70">余额</span><span className="text-sm font-black">¥{formatMoney(card.balance)}</span></div>
@@ -157,7 +178,14 @@ const BankCardWallet: React.FC<Props> = ({ characters, userProfile, addToast }) 
                                     <button onClick={() => void deleteCard(card)} aria-label="删除银行卡" className="rounded-full bg-black/25 p-1.5 backdrop-blur-sm"><Trash size={12} /></button>
                                 </div>
                             </div>
-                            <div className={`flex items-end drop-shadow-[0_1px_3px_rgba(0,0,0,.85)] ${style.artwork ? 'justify-start' : 'justify-between'}`}><div className="font-mono text-sm tracking-[0.22em]">•••• {card.last4}</div>{!style.artwork && <div className="rounded-xl bg-black/20 px-2.5 py-1.5 text-right backdrop-blur-[2px]"><div className="text-[9px] opacity-70">可用余额</div><div className="text-xl font-black">¥{formatMoney(card.balance)}</div></div>}</div>
+                            {isCalebReference ? (
+                                <div className="flex items-end justify-between text-white drop-shadow-[0_1px_2px_rgba(0,0,0,.28)]">
+                                    <div className="text-[8px] font-bold uppercase tracking-[0.28em]"><div>VISA</div><div className="mt-1">•••• {card.last4}</div></div>
+                                    <div className="rounded-lg bg-[#1789c4]/55 px-2 py-1 text-right backdrop-blur-[2px]"><div className="text-[7px] opacity-80">可用余额</div><div className="text-sm font-black">¥{formatMoney(card.balance)}</div></div>
+                                </div>
+                            ) : (
+                                <div className={`flex items-end drop-shadow-[0_1px_3px_rgba(0,0,0,.85)] ${style.artwork ? 'justify-start' : 'justify-between'}`}><div className="font-mono text-sm tracking-[0.22em]">•••• {card.last4}</div>{!style.artwork && <div className="rounded-xl bg-black/20 px-2.5 py-1.5 text-right backdrop-blur-[2px]"><div className="text-[9px] opacity-70">可用余额</div><div className="text-xl font-black">¥{formatMoney(card.balance)}</div></div>}</div>
+                            )}
                             </div>
                         </div>;
                     })}

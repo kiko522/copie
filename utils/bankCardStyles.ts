@@ -1,12 +1,30 @@
 import { BankCardStyle } from '../types';
 
 export const XIA_YIZHOU_CARD_STYLE_ID = 'xia-yizhou-flightline';
+export const XIA_YIZHOU_CALEB_CARD_STYLE_ID = 'xia-yizhou-caleb-reference';
+
+export const isXiaYizhouCardStyle = (styleId: string) =>
+    styleId === XIA_YIZHOU_CARD_STYLE_ID || styleId === XIA_YIZHOU_CALEB_CARD_STYLE_ID;
 
 /**
- * 原创虚拟卡面种子。只借用常见金融配色，不复制任何真实银行卡版式或商标。
+ * 本地虚拟卡面，不代表真实发卡机构；收藏联名版使用项目内授权素材分层渲染。
  * 后续增加卡面只需追加 style，不需要迁移用户已创建的银行卡。
  */
 export const BANK_CARD_STYLES: BankCardStyle[] = [
+    {
+        id: XIA_YIZHOU_CALEB_CARD_STYLE_ID,
+        name: '夏以昼 · Caleb 蓝卡',
+        background: '#39a0d8',
+        foreground: '#ffffff',
+        muted: '#e8f7ff',
+        artwork: {
+            layout: 'caleb-reference',
+            backgroundImage: '/bank-cards/xia-yizhou/caleb-reference-background.png',
+            portraitImage: '/bank-cards/xia-yizhou/portrait-cutout.png',
+            primarySignatureImage: '/bank-cards/xia-yizhou/signature-zh.png',
+            secondarySignatureImage: '/bank-cards/xia-yizhou/signature-en.png',
+        },
+    },
     {
         id: XIA_YIZHOU_CARD_STYLE_ID,
         name: '夏以昼 · 破晓航线',
@@ -14,6 +32,7 @@ export const BANK_CARD_STYLES: BankCardStyle[] = [
         foreground: '#f8fbff',
         muted: '#bfdbfe',
         artwork: {
+            layout: 'flightline',
             backgroundImage: '/bank-cards/xia-yizhou/flightline-background.png',
             portraitImage: '/bank-cards/xia-yizhou/portrait-cutout.png',
             primarySignatureImage: '/bank-cards/xia-yizhou/signature-zh.png',
@@ -31,4 +50,4 @@ export const BANK_CARD_STYLES: BankCardStyle[] = [
     { id: 'midnight-blue', name: '午夜蓝', background: 'linear-gradient(135deg,#020617,#0f3b74 58%,#94a3b8)', foreground: '#f8fafc', muted: '#cbd5e1' },
 ];
 
-export const DEFAULT_BANK_CARD_STYLE_ID = BANK_CARD_STYLES[0].id;
+export const DEFAULT_BANK_CARD_STYLE_ID = XIA_YIZHOU_CALEB_CARD_STYLE_ID;
