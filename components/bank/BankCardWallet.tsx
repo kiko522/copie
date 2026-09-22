@@ -24,12 +24,12 @@ const CardArtwork: React.FC<{ style: BankCardStyle; preview?: boolean }> = ({ st
                 <img src={artwork.backgroundImage} alt="" className="absolute inset-0 h-full w-full object-cover" />
                 {artwork.portraitImage && <img src={artwork.portraitImage} alt="" className={`absolute object-contain object-bottom ${preview ? 'bottom-[2%] right-[1%] h-[76%] w-[45%]' : 'bottom-[2%] right-[1%] h-[79%] w-[47%]'}`} />}
                 {artwork.secondarySignatureImage && <img src={artwork.secondarySignatureImage} alt="" className={`absolute right-[7%] top-[7%] object-contain ${preview ? 'w-[25%]' : 'w-[27%]'}`} />}
-                <div className={`absolute bottom-[5%] left-[5%] flex items-baseline leading-none tracking-[-0.04em] text-white drop-shadow-[0_1px_1px_rgba(122,54,0,.28)] ${preview ? 'text-[21px]' : 'text-[42px]'}`}>
+                <div className={`absolute bottom-[5%] left-[5%] flex items-baseline gap-[0.08em] leading-none text-white drop-shadow-[0_1px_1px_rgba(122,54,0,.28)] ${preview ? 'text-[21px]' : 'text-[42px]'}`}>
                     <span className="font-sans font-black">C</span>
-                    <span className="ml-[1px] font-serif font-normal" style={outlineStyle}>a</span>
-                    <span className="ml-[1px] font-sans font-black">l</span>
-                    <span className="ml-[1px] font-serif font-normal" style={outlineStyle}>e</span>
-                    <span className="ml-[1px] font-sans font-black">b</span>
+                    <span className="font-serif font-normal" style={outlineStyle}>a</span>
+                    <span className="font-sans font-black">l</span>
+                    <span className="font-serif font-normal" style={outlineStyle}>e</span>
+                    <span className="font-sans font-black">b</span>
                 </div>
             </div>
         );
@@ -207,11 +207,7 @@ const BankCardWallet: React.FC<Props> = ({ characters, userProfile, addToast }) 
                                 </div>
                             </div>
                             {isUserSuicaReference ? (
-                                <div className="mb-[19%] inline-flex w-fit items-center gap-2 rounded-lg bg-white/75 px-2.5 py-1.5 text-[#9b4e08] shadow-sm backdrop-blur-[2px]">
-                                    <div className="text-[8px] font-black uppercase tracking-[0.2em]">VISA<br />•••• {card.last4}</div>
-                                    <div className="h-5 w-px bg-[#f5b05d]" />
-                                    <div><div className="text-[7px] opacity-70">可用余额</div><div className="text-sm font-black">¥{formatMoney(card.balance)}</div></div>
-                                </div>
+                                <div />
                             ) : isCalebReference ? (
                                 <div className="flex items-end justify-between text-white drop-shadow-[0_1px_2px_rgba(0,0,0,.28)]">
                                     <div className="text-[8px] font-bold uppercase tracking-[0.28em]"><div>VISA</div><div className="mt-1">•••• {card.last4}</div></div>
